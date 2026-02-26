@@ -243,6 +243,38 @@ def _run_gemini_turn(session: Dict[str, Any]) -> Dict[str, Any]:
 
             candidate = resp.candidates[0]
 
+            if not candidate.content:
+                reason = getattr(candidate, "finish_reason", "UNKNOWN")
+                logger.error(f"API returned no content on initial prompt. Finish reason: {reason}. Attempting fallback.")
+                
+                # Send a strong fallback prompt asking the LLM to just output a recommendation based on what it knows
+                fallback_prompt = (
+                    "Your previous response was blocked by an API safety filter or length limit. "
+                    "Based on the facts you already gathered in your Understanding State, IGNORE ALL formatting rules and just "
+                    "give your best, safest vector index recommendation in plain text right now. Do not use any tools."
+                )
+                
+                try:
+                    fallback_resp = chat.send_message(fallback_prompt)
+                    fallback_candidate = fallback_resp.candidates[0]
+                    if fallback_candidate.content and fallback_candidate.content.parts:
+                        text = fallback_resp.text
+                        session["history"].append({"role": "model", "content": text})
+                        return {
+                            "type": "text",
+                            "payload": {"message": f"*(Recovered from API block)*\n\n{text}"},
+                            "steps": ephemeral_trace,
+                        }
+                except Exception as fallback_e:
+                    logger.error(f"Fallback also failed: {fallback_e}")
+                
+                msg = f"API blocked response and recovery failed. Finish reason: {reason}"
+                return {
+                    "type": "error",
+                    "payload": {"message": msg},
+                    "steps": ephemeral_trace,
+                }
+
             parts = candidate.content.parts
             function_parts = [p for p in parts if getattr(p, "function_call", None)]
 

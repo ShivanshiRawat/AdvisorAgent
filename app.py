@@ -39,8 +39,6 @@ TOOL_META = {
     "plan":                  ("📋 Execution Plan",              "planning"),
     "update_state":          ("📝 Updating Understanding",      "memory"),
     "evaluate_index_viability": ("🧮 Viability Check",         "compute"),
-    "compute_config":        ("⚙️ Computing Configuration",     "compute"),
-    "validate_and_explain":  ("✅ Validating Configuration",    "compute"),
     "compare_indexes":       ("⚖️ Comparing Index Options",     "analysis"),
     "estimate_resources":    ("💾 Estimating Resource Footprint","compute"),
     "google_search":         ("🔍 Google Search",               "search"),
@@ -347,18 +345,6 @@ async def _show_recommendation(payload: Dict[str, Any]):
             parts.append("**Alternatives considered and eliminated:**")
             for k, v in elim.items():
                 parts.append(f"- ~~{k}~~: {v}")
-            parts.append("")
-
-        cfg = rec.get("config", {})
-        if cfg:
-            config_lines = []
-            for key, val in cfg.items():
-                if isinstance(val, dict):
-                    val_str = ", ".join(f"{k}: {v}" for k, v in val.items())
-                    config_lines.append(f"  - **{key}**: {val_str}")
-                else:
-                    config_lines.append(f"  - **{key}**: {val}")
-            parts.append("**Starting configuration:**\n" + "\n".join(config_lines))
             parts.append("")
 
         for c in rec.get("caveats", []):

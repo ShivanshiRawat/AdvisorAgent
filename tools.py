@@ -143,7 +143,7 @@ def evaluate_index_viability(
         report.append(
             f"✅ Composite Vector Index (CVI): VIABLE. Filter prunes to {filter_selectivity_pct}% of corpus — "
             f"GSI eliminates {100 - filter_selectivity_pct:.0f}% before the ANN step. "
-            f"CAVEAT: Full index must fit in RAM. Verify with estimate_resources before finalising."
+            f"CAVEAT: Full index must fit in cluster RAM (e.g., a 600GB index distributes easily across multiple index nodes)."
         )
         report.append(
             "⚠️  Hyperscale Vector Index (HVI): SUBOPTIMAL for this selectivity — "
@@ -161,117 +161,6 @@ def evaluate_index_viability(
 
     report.append("\nINSTRUCTION: Use these exact conclusions in your final give_recommendation call.")
     return "\n".join(report)
-
-
-def compute_config(
-    index_type: str,
-    vector_count: int,
-    dimension: int,
-    similarity_metric: str = "cosine",
-    quantization: str = "auto",
-    p95_ms: Optional[int] = None,
-) -> dict:
-    """Compute a starting configuration using official Couchbase formulas.
-
-    Args:
-        index_type: One of Hyperscale, Composite, Search, Hybrid
-        vector_count: Total vectors (or subset size if Composite after GSI filter)
-        dimension: Vector dimension
-        similarity_metric: L2, L2_Squared, Cosine, or Dot
-        quantization: SQ8, SQ4, PQ128X8, PQ64X8, PQ32X8, None, or 'auto'
-        p95_ms: Optional latency target in milliseconds
-    """
-    # nlist — number of centroids (formula: round(N / 1000))
-    nlist = max(1, round(vector_count / 1000))
-
-    # train_list — sample size for codebook training
-    if vector_count < 10_000:
-        train_list = vector_count
-    else:
-        train_list = min(max(int(0.1 * vector_count), 10 * nlist), 1_000_000)
-
-    # Quantization auto-selection
-    if quantization == "auto":
-        quantization = "SQ8" if vector_count > 50_000_000 else "None"
-
-    # Centroid density check (~1,000 vectors/centroid is the sweet spot)
-    density = vector_count / nlist if nlist > 0 else vector_count
-    if density > 15000:
-        density_note = f"⚠️ High density ({density:,.0f}/centroid). Consider increasing nlist."
-    elif density < 39:
-        density_note = f"⚠️ Low density ({density:,.0f}/centroid). Consider decreasing nlist."
-    else:
-        density_note = f"✅ Good density ({density:,.0f}/centroid)."
-
-    config = {
-        "index_type": index_type,
-        "nlist": nlist,
-        "train_list": train_list,
-        "nprobe": {"default": 1, "recommended_range": "8–16 for real-time, up to 32 for batch"},
-        "quantization": quantization,
-        "dimension": dimension,
-        "similarity_metric": similarity_metric,
-        "persist_full_vector": True,
-        "centroid_density": density_note,
-    }
-
-    if index_type.lower() == "hyperscale":
-        config["top_n_scan"] = {"range": [40, 300], "note": "Tune based on query limit"}
-        config["reranking"] = False
-
-    return config
-
-
-def validate_and_explain(index_type: str, config: dict, vector_count: int) -> str:
-    """Validate a configuration and provide physical explanations for any issues."""
-    warnings = []
-
-    nlist = config.get("nlist", 0)
-    if nlist > vector_count:
-        warnings.append("CRITICAL: nlist cannot exceed vector count.")
-
-    if nlist > 0:
-        density = vector_count / nlist
-        if density > 15000:
-            warnings.append(
-                f"Centroid density is very high ({density:,.0f} per centroid). "
-                f"Each nprobe scan will read a large cluster — if it doesn't fit in memory, "
-                f"this triggers expensive disk I/O. Consider increasing nlist to ~{vector_count // 1000:,}."
-            )
-        elif density < 39:
-            warnings.append(
-                f"Centroid density is very low ({density:,.0f} per centroid). "
-                f"Index structure may be unstable with degenerate centroids. "
-                f"Consider decreasing nlist towards ~{vector_count // 1000:,}."
-            )
-
-    if config.get("reranking") is True and config.get("persist_full_vector") is False:
-        warnings.append(
-            "CRITICAL: Reranking requires persist_full_vector=True. "
-            "Reranking recalculates exact distances using uncompressed vectors — "
-            "without them, there's nothing to rerank against."
-        )
-
-    train_list = config.get("train_list", 0)
-    if train_list > 1_000_000:
-        warnings.append(
-            f"Train list ({train_list:,}) exceeds 1M cap. "
-            "Beyond 1M, marginal quality gain is minimal but build time becomes excessive."
-        )
-
-    if config.get("quantization") == "None" and vector_count > 50_000_000:
-        warnings.append(
-            "No quantization on 50M+ vectors. Uncompressed storage will be very large. "
-            "SQ8 provides 4x memory reduction with acceptable recall trade-off."
-        )
-
-    if not warnings:
-        return (
-            "Configuration is structurally valid. "
-            "Next step: tune nprobe during load testing — increase it if recall is insufficient, "
-            "decrease if latency budget is tight."
-        )
-    return "Validation findings:\n- " + "\n- ".join(warnings)
 
 
 def compare_indexes(
@@ -414,7 +303,6 @@ class QueryPatternRecommendation(TypedDict):
     recommended_index: str
     reasoning: str
     eliminated_alternatives: Dict[str, str]
-    config: Dict[str, Any]
     caveats: Optional[List[str]]
 
 
@@ -594,67 +482,6 @@ ALL_TOOL_SCHEMAS = [
     {
         "type": "function",
         "function": {
-            "name": "compute_config",
-            "description": (
-                "Compute starting index configuration using official Couchbase formulas. "
-                "Returns nlist, train_list, nprobe defaults, quantization, and centroid density analysis."
-            ),
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "index_type": {
-                        "type": "string",
-                        "enum": ["Hyperscale", "Composite", "Search", "Hybrid"],
-                    },
-                    "vector_count": {
-                        "type": "integer",
-                        "description": "Total vectors (or post-filter subset size for Composite)",
-                    },
-                    "dimension": {"type": "integer", "description": "Vector dimension"},
-                    "similarity_metric": {
-                        "type": "string",
-                        "enum": ["L2", "L2_Squared", "Cosine", "Dot"],
-                        "description": "Similarity metric (default: Cosine)",
-                    },
-                    "quantization": {
-                        "type": "string",
-                        "enum": ["SQ8", "SQ4", "PQ128X8", "PQ64X8", "PQ32X8", "None", "auto"],
-                        "description": "Quantization type. Use 'auto' to let the formula decide.",
-                    },
-                    "p95_ms": {
-                        "type": "integer",
-                        "description": "Optional latency target in ms",
-                    },
-                },
-                "required": ["index_type", "vector_count", "dimension"],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "validate_and_explain",
-            "description": (
-                "Validate a configuration against known physical constraints. "
-                "Returns explanations for anything structurally invalid."
-            ),
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "index_type": {"type": "string"},
-                    "config": {
-                        "type": "object",
-                        "description": "The config dictionary to validate",
-                    },
-                    "vector_count": {"type": "integer"},
-                },
-                "required": ["index_type", "config", "vector_count"],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
             "name": "compare_indexes",
             "description": (
                 "Side-by-side tradeoff analysis of two index strategies. "
@@ -802,10 +629,6 @@ ALL_TOOL_SCHEMAS = [
                                         "description": "Why it was eliminated — physical reasoning.",
                                     },
                                 },
-                                "config": {
-                                    "type": "object",
-                                    "description": "Starting configuration from compute_config.",
-                                },
                                 "caveats": {
                                     "type": "array",
                                     "items": {"type": "string"},
@@ -817,7 +640,6 @@ ALL_TOOL_SCHEMAS = [
                                 "recommended_index",
                                 "reasoning",
                                 "eliminated_alternatives",
-                                "config",
                             ],
                         },
                     },
@@ -897,23 +719,6 @@ def execute_tool(tool_name: str, args: dict, session_state: Optional[dict] = Non
             kw = kw_raw in ("true", "yes", "y", "1")
 
             return evaluate_index_viability(vc, sel, kw)
-
-        elif tool_name == "compute_config":
-            return compute_config(
-                index_type=args.get("index_type", "Hyperscale"),
-                vector_count=int(args.get("vector_count", 0)),
-                dimension=int(args.get("dimension", 768)),
-                similarity_metric=args.get("similarity_metric", "Cosine"),
-                quantization=args.get("quantization", "auto"),
-                p95_ms=args.get("p95_ms"),
-            )
-
-        elif tool_name == "validate_and_explain":
-            return validate_and_explain(
-                index_type=args.get("index_type", ""),
-                config=args.get("config", {}),
-                vector_count=int(args.get("vector_count", 0)),
-            )
 
         elif tool_name == "compare_indexes":
             return compare_indexes(
