@@ -38,11 +38,6 @@ LLM_PROVIDER = "gemini"
 # gemini-2.5-flash is the default — fast, highly capable, great tool-use
 MODEL: str = os.environ.get("VIA_MODEL", "gemini-2.5-flash")
 
-# Per-phase temperatures
-EXTRACTION_TEMPERATURE: float = 0.2    # Precise extraction
-HYPOTHESIS_TEMPERATURE: float = 0.4    # Some creative reasoning
-DECISION_TEMPERATURE: float = 0.3      # Balanced
-
 # Limits
 MAX_DOC_TOKENS: int = 4000
 MAX_RETRIES: int = 2

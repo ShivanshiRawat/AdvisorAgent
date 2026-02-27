@@ -9,7 +9,11 @@ Key behaviours:
 from __future__ import annotations
 
 import json
+import logging
 from typing import Any, Dict, List
+
+logger = logging.getLogger(__name__)
+
 
 import chainlit as cl
 
@@ -50,6 +54,7 @@ async def on_chat_start():
             "questions only when something critical is missing."
         )
     ).send()
+
 
 
 # ---------------------------------------------------------------------------
