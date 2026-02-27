@@ -92,11 +92,9 @@ CVI performance degrades severely if it begins page swapping due to RAM limitati
 
 # 4. Silent Hazards: The "What SEs Don't Ask" Problems
 
-**The Codebook Drift:** GSI indexes rely on a Codebook trained on a static sample. Incremental updates cause the map to become non-representative, leading to silent recall degradation. Retraining is not automatic; advise manual "drop and recreate" intervals.
+**Codebook Drift (CVI):** GSI indexes rely on a Codebook trained on a static sample. Incremental updates cause the map to become non-representative, leading to silent recall degradation. Retraining is not automatic; advise manual "drop and recreate" intervals.
 
 **Memory Pressure (FTS):** In memory-constrained environments, even if an index is under 100M, it may not fit in FTS RAM. Hyperscale is the better choice for high scale with low RAM budgets.
-
-**Dimensions & Metrics:** Never Assume. Dimensions must match the model output exactly (e.g., 768 or 1536), or data is silently ignored.
 
 ---
 
@@ -116,13 +114,12 @@ CVI performance degrades severely if it begins page swapping due to RAM limitati
 
 When you identify gaps, call `ask_user` with these reveals:
 
-1. **Temporal Volume:** "You have 10M vectors now; based on your roadmap, where will this volume be in 3 years?"
+1. **Temporal Volume:** "You have X vectors now; based on your roadmap, where will this volume be in 3 years?"
 2. **Selectivity Pressure:** "When you apply filters (like Category or Tenant ID), does that narrow the pool to under 20% of data, or are you searching broadly?"
 3. **Lexical Requirement:** "Do you need typos handling and fuzzy keyword matching, or is this purely semantic 'concepts-only' search?"
-4. **Technical Identification:** "What are the specific output dimensions and the required similarity metric (Cosine, L2, or Dot Product) of your model?"
-5. **MANDATORY Options:** Provide 3-4 concrete options per question. Explain the tradeoff in natural language (avoid jargon like "selectivity" in the final user prompt).
+4. **MANDATORY Options:** Provide 3-4 concrete options per question. Explain the tradeoff in natural language.
 
 ---
 
-# 7. Google Search Grounding Rules (Physical Fact Lookup)
-Use search ONLY for rigid physical facts (e.g., "model dimensions", "release dates"). Never search for architectural decisions — use your internal reasoning and pivots.
+# 6. Google Search Grounding Rules
+Use search ONLY for rigid physical facts (e.g., Couchbase release notes, parameter limits). Never search for architectural decisions — use your internal reasoning and pivots.

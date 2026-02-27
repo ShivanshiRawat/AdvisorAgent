@@ -1,8 +1,5 @@
 """
 VIA Agent — Gemini-native ReAct loop using the google-genai SDK.
-Google Search grounding is built-in. Tools are passed as FunctionDeclarations
-(converted from our OpenAI-format ALL_TOOL_SCHEMAS) to avoid Python callable
-parsing issues with complex TypedDict signatures.
 """
 
 import json
@@ -71,13 +68,7 @@ def _convert_schema(schema: dict) -> types.Schema:
 
 
 def _build_gemini_tools() -> List[types.Tool]:
-    """Convert ALL_TOOL_SCHEMAS (OpenAI format) → a single Gemini Tool with FunctionDeclarations.
-
-    Note: gemini-flash-latest does not support combining google_search grounding with
-    custom function calling. We use web_search as an explicit function tool instead,
-    which is better for the reasoning trace anyway — the model decides when to search
-    and what to search for, and we see it as a first-class step.
-    """
+    """Convert ALL_TOOL_SCHEMAS (OpenAI format) → a single Gemini Tool."""
     declarations = []
     for schema in ALL_TOOL_SCHEMAS:
         fn = schema["function"]
@@ -107,7 +98,6 @@ def _get_tools() -> List[types.Tool]:
 # ---------------------------------------------------------------------------
 
 def _to_gemini_history(history: List[Dict[str, Any]]) -> List[types.Content]:
-    """Convert our list-of-dicts history into Gemini Content objects."""
     result = []
     for msg in history:
         role = "user" if msg["role"] == "user" else "model"
@@ -122,26 +112,22 @@ def _to_gemini_history(history: List[Dict[str, Any]]) -> List[types.Content]:
     return result
 
 
-# ---------------------------------------------------------------------------
-# Session initialisation
-# ---------------------------------------------------------------------------
-
 def _load_agent_md() -> str:
     path = Path(__file__).parent / "AGENT.md"
     try:
         if path.exists():
-            content = path.read_text(encoding="utf-8")
-            logger.info(f"Loaded AGENT.md ({len(content)} chars)")
-            return content
-        logger.warning("AGENT.md not found")
+            return path.read_text(encoding="utf-8")
     except Exception as e:
         logger.error(f"Failed to load AGENT.md: {e}")
     return ""
 
 
+# ---------------------------------------------------------------------------
+# Session initialisation
+# ---------------------------------------------------------------------------
+
 def _init_session(session: Dict[str, Any]):
     if "history" not in session:
-        # History starts clean — AGENT.md lives only in system_instruction, not here.
         session["history"] = []
     if "state" not in session:
         session["state"] = {
@@ -181,6 +167,45 @@ def _compress_history(session: Dict[str, Any]):
 
 
 # ---------------------------------------------------------------------------
+# "I don't know" detection
+# ---------------------------------------------------------------------------
+
+_UNKNOWN_PHRASES = {
+    "i don't know", "i dont know", "don't know", "dont know",
+    "not sure", "unsure", "no idea", "no clue", "idk",
+    "i'm not sure", "im not sure", "i am not sure",
+    "not known", "unknown", "i have no idea",
+    "i can't say", "i cannot say", "can't say",
+    "i don't have that info", "i don't have that information",
+    "not provided", "n/a", "na", "skip",
+}
+
+def _is_unknown_response(text: str) -> bool:
+    """Return True if the user is signalling they don't know the answer."""
+    normalised = text.strip().lower()
+    if normalised in _UNKNOWN_PHRASES:
+        return True
+    # Also catch short sentences that are substrings
+    for phrase in _UNKNOWN_PHRASES:
+        if phrase in normalised and len(normalised) < 80:
+            return True
+    return False
+
+
+def _build_unknown_note(user_message: str) -> str:
+    """Produce an injection note for the agent when user says they don't know."""
+    return (
+        f"[SYSTEM NOTE] The user replied: \"{user_message.strip()}\"\n"
+        "This means they do not have this information. "
+        "You MUST accept this as a confirmed unknown, record it in update_state "
+        "(add the gap to resolved_gaps with value 'unknown'), and move forward. "
+        "Do NOT ask the same question again. "
+        "Proceed to give a recommendation based on everything you know so far, "
+        "using the most conservative/safe assumption for any unknowns."
+    )
+
+
+# ---------------------------------------------------------------------------
 # Main entry point
 # ---------------------------------------------------------------------------
 
@@ -188,15 +213,25 @@ def run_turn(user_message: str, session: Dict[str, Any]) -> Dict[str, Any]:
     """Run one ReAct turn and return a typed response dict."""
     _init_session(session)
     _compress_history(session)
+
+    # Detect "I don't know" responses early and inject a directive
+    if _is_unknown_response(user_message):
+        effective_message = _build_unknown_note(user_message)
+    else:
+        effective_message = user_message
+
     session["history"].append({"role": "user", "content": user_message})
-    return _run_gemini_turn(session)
+    return _run_gemini_turn(session, effective_message)
 
 
 # ---------------------------------------------------------------------------
 # Gemini-native ReAct loop
 # ---------------------------------------------------------------------------
 
-def _run_gemini_turn(session: Dict[str, Any]) -> Dict[str, Any]:
+def _run_gemini_turn(
+    session: Dict[str, Any],
+    effective_message: str = None,
+) -> Dict[str, Any]:
     agent_md = _load_agent_md()
     system_prompt = get_system_prompt()
     state_json = json.dumps(session.get("state", {}), indent=2, default=str)
@@ -212,10 +247,9 @@ def _run_gemini_turn(session: Dict[str, Any]) -> Dict[str, Any]:
         system_instruction=full_system,
         tools=_get_tools(),
         temperature=0.3,
-        thinking_config=types.ThinkingConfig(thinking_budget=0),  # disable for speed
+        thinking_config=types.ThinkingConfig(thinking_budget=0),
     )
 
-    # Build prior history — skip if empty (first turn)
     prior_history = _to_gemini_history(session["history"][:-1]) if len(session["history"]) > 1 else []
 
     chat = client.chats.create(
@@ -224,8 +258,8 @@ def _run_gemini_turn(session: Dict[str, Any]) -> Dict[str, Any]:
         history=prior_history,
     )
 
-    # First prompt includes the live state
-    user_latest = session["history"][-1]["content"]
+    # Use the (possibly annotated) effective message, falling back to raw history content
+    user_latest = effective_message if effective_message is not None else session["history"][-1]["content"]
     first_prompt = (
         f"### Current Understanding State\n```json\n{state_json}\n```\n\n"
         f"User: {user_latest}"
@@ -239,39 +273,32 @@ def _run_gemini_turn(session: Dict[str, Any]) -> Dict[str, Any]:
         try:
             if loop_i == 0:
                 resp = chat.send_message(first_prompt)
-            # subsequent loops use resp set at the bottom of the loop
 
-            candidate = resp.candidates[0]
+            candidate = resp.candidates[0] if resp and resp.candidates else None
 
-            if not candidate.content:
-                reason = getattr(candidate, "finish_reason", "UNKNOWN")
-                logger.error(f"API returned no content on initial prompt. Finish reason: {reason}. Attempting fallback.")
-                
-                # Send a strong fallback prompt asking the LLM to just output a recommendation based on what it knows
-                fallback_prompt = (
-                    "Your previous response was blocked by an API safety filter or length limit. "
-                    "Based on the facts you already gathered in your Understanding State, IGNORE ALL formatting rules and just "
-                    "give your best, safest vector index recommendation in plain text right now. Do not use any tools."
-                )
-                
+            # --- Empty / blocked response handling ---
+            if not candidate or not candidate.content or not candidate.content.parts:
+                reason = getattr(candidate, "finish_reason", "UNKNOWN") if candidate else "NO_CANDIDATE"
+                logger.error(f"Empty API response on loop {loop_i}. Finish reason: {reason}. Retrying...")
+
+                # Retry once with an explicit directive
                 try:
-                    fallback_resp = chat.send_message(fallback_prompt)
-                    fallback_candidate = fallback_resp.candidates[0]
-                    if fallback_candidate.content and fallback_candidate.content.parts:
-                        text = fallback_resp.text
-                        session["history"].append({"role": "model", "content": text})
-                        return {
-                            "type": "text",
-                            "payload": {"message": f"*(Recovered from API block)*\n\n{text}"},
-                            "steps": ephemeral_trace,
-                        }
-                except Exception as fallback_e:
-                    logger.error(f"Fallback also failed: {fallback_e}")
-                
-                msg = f"API blocked response and recovery failed. Finish reason: {reason}"
+                    retry_resp = chat.send_message(
+                        "Your last response was empty. Based on the Understanding State you already have, "
+                        "immediately call give_recommendation or ask_user — whichever is appropriate. "
+                        "Do not produce an empty response."
+                    )
+                    retry_candidate = retry_resp.candidates[0] if retry_resp and retry_resp.candidates else None
+                    if retry_candidate and retry_candidate.content and retry_candidate.content.parts:
+                        resp = retry_resp
+                        continue  # re-enter loop with the retry response
+                except Exception as retry_e:
+                    logger.error(f"Retry also failed: {retry_e}")
+
+                # Both retries failed — return an error
                 return {
                     "type": "error",
-                    "payload": {"message": msg},
+                    "payload": {"message": "The AI service returned an empty response. Please try again."},
                     "steps": ephemeral_trace,
                 }
 
@@ -280,7 +307,14 @@ def _run_gemini_turn(session: Dict[str, Any]) -> Dict[str, Any]:
 
             # --- Pure text response ---
             if not function_parts:
-                text = resp.text
+                text = resp.text or ""
+                if not text.strip():
+                    logger.warning(f"Empty text response on loop {loop_i}.")
+                    return {
+                        "type": "error",
+                        "payload": {"message": "The AI service returned an empty response. Please try again."},
+                        "steps": ephemeral_trace,
+                    }
                 session["history"].append({"role": "model", "content": text})
                 return {
                     "type": "text",
@@ -370,7 +404,6 @@ def _run_gemini_turn(session: Dict[str, Any]) -> Dict[str, Any]:
                     "steps": ephemeral_trace,
                 }
 
-            # Continue loop with tool results
             resp = chat.send_message(tool_responses)
 
         except Exception as e:

@@ -1,13 +1,15 @@
 """
 Tool definitions and implementations for the VIA agent.
-Each tool serves a specific purpose in the SE reasoning loop.
 
-Google Search is handled natively by Gemini grounding — no web_search tool needed here.
+Tools are grouped into three categories:
+  1. Reasoning tools  — help the agent think and track state
+  2. Domain tools     — compute index-choice decisions
+  3. Terminal tools   — end the turn (ask_user, give_recommendation)
 """
 
 import json
 import logging
-import math
+import re
 from typing import Any, Dict, List, Optional, TypedDict
 
 try:
@@ -20,36 +22,32 @@ except ImportError:
     except ImportError:
         _DDGS_AVAILABLE = False
 
+from pathlib import Path
+from use_case_similarity import find_similar_cases
+
 logger = logging.getLogger(__name__)
+
+# Path to the use case library, relative to this file
+_USE_CASES_PATH = str(Path(__file__).parent / "use_cases.json")
 
 
 # ---------------------------------------------------------------------------
-# REASONING TOOLS — Help the agent think, not just act
+# REASONING TOOLS
 # ---------------------------------------------------------------------------
 
 def think(reasoning: str) -> str:
-    """Free-form scratchpad for the agent to reason out loud.
-
-    The agent uses this to articulate what it knows, what it suspects,
-    what trade-offs it's weighing, and what it's uncertain about —
-    like an SE whiteboarding.
-    """
+    """Free-form scratchpad. The agent uses this to articulate what it knows,
+    what trade-offs it's weighing, and what it's uncertain about."""
     return "Thinking recorded. Continue your analysis."
 
 
 def plan(steps: list) -> str:
-    """Agent outlines what it will do next and why.
-
-    Called at the start of a new user request to structure the approach.
-    """
+    """Agent outlines its approach at the start of a new request."""
     return "Plan recorded. Proceed with execution."
 
 
 def update_state(session_state: dict, updates: dict) -> str:
-    """Merge new facts into the agent's persistent understanding state.
-
-    Accepts partial updates — only provided keys are merged.
-    """
+    """Merge new facts into the agent's persistent session state."""
     for key in ["confirmed_facts", "resolved_gaps"]:
         if key in updates:
             if isinstance(session_state.get(key), dict):
@@ -76,7 +74,6 @@ def update_state(session_state: dict, updates: dict) -> str:
 
     if "narrative_summary" in updates:
         session_state["narrative_summary"] = updates["narrative_summary"]
-
     if "reasoning_so_far" in updates:
         session_state["reasoning_so_far"] = updates["reasoning_so_far"]
 
@@ -84,18 +81,11 @@ def update_state(session_state: dict, updates: dict) -> str:
 
 
 # ---------------------------------------------------------------------------
-# DOMAIN TOOLS — Help the agent compute, validate, and compare
+# DOMAIN TOOLS
 # ---------------------------------------------------------------------------
 
 def web_search(query: str) -> str:
-    """Search the web for Couchbase vector index facts or embedding model specifications.
-
-    Use this when you need to verify:
-    - A specific embedding model's output dimensions (e.g. 'all-MiniLM-L6-v2 dimensions')
-    - A Couchbase parameter limit you are unsure about
-    - Recent Couchbase documentation on a feature
-    NEVER use this for architectural decisions — those come from your knowledge base.
-    """
+    """Search the web for Couchbase parameter limits, release notes, or other factual lookups."""
     if not _DDGS_AVAILABLE:
         return "Web search unavailable."
     try:
@@ -115,51 +105,50 @@ def web_search(query: str) -> str:
 def evaluate_index_viability(
     projected_vector_count: int,
     filter_selectivity_pct: float,
-    requires_keyword_search: bool
+    requires_keyword_search: bool,
 ) -> str:
-    """Evaluate index viability based on physical scale and selectivity rules.
-    This provides deterministic math evaluation of AGENT.md ground truth.
-    """
-    report = ["--- DETERMINISTIC VIABILITY REPORT ---"]
+    """Evaluate which index types are viable based on scale, selectivity, and
+    keyword search requirements. Returns a deterministic verdict report."""
+    report = ["--- VIABILITY REPORT ---"]
     report.append(
-        f"Input: {projected_vector_count:,} vectors, "
+        f"Input: {projected_vector_count:,} vectors (3-year projection), "
         f"{filter_selectivity_pct}% data remaining after filter, "
         f"keyword search required: {requires_keyword_search}"
     )
 
-    # 1. Scale & Keyword Search Rules (The 100M Ceiling)
+    # Scale + keyword search rule
     if requires_keyword_search:
         if projected_vector_count > 100_000_000:
-            report.append("❌ Search Vector Index (FTS): ELIMINATED. Projected scale > 100M exceeds the memory-mapping ceiling.")
-            report.append("✅ Hybrid Architecture (HVI + FTS): REQUIRED. HVI handles billion-scale vectors; FTS handles keyword search.")
+            report.append("❌ Search Vector Index (FTS): ELIMINATED — scale exceeds the 100M memory-mapping ceiling.")
+            report.append("✅ Hybrid Architecture (HVI + FTS): REQUIRED — HVI handles vectors at scale, FTS handles keywords.")
         else:
-            report.append("✅ Search Vector Index (FTS): SUPPORTED. Scale is safely under the 100M ceiling.")
-            report.append("⚠️  Hybrid Architecture (HVI + FTS): OVERKILL at this scale. Unified FTS is simpler and sufficient.")
+            report.append("✅ Search Vector Index (FTS): VIABLE — scale is safely under the 100M ceiling.")
+            report.append("⚠️  Hybrid Architecture (HVI + FTS): OVERKILL at this scale — unified FTS is simpler.")
     else:
         report.append("ℹ️  Search Vector Index / Hybrid: NOT APPLICABLE (no keyword search required).")
 
-    # 2. Selectivity Rules
+    # Selectivity rule
     if filter_selectivity_pct < 20:
         report.append(
-            f"✅ Composite Vector Index (CVI): VIABLE. Filter prunes to {filter_selectivity_pct}% of corpus — "
-            f"GSI eliminates {100 - filter_selectivity_pct:.0f}% before the ANN step. "
-            f"CAVEAT: Full index must fit in cluster RAM (e.g., a 600GB index distributes easily across multiple index nodes)."
+            f"✅ Composite Vector Index (CVI): VIABLE — filter prunes to {filter_selectivity_pct}% of corpus. "
+            f"GSI eliminates {100 - filter_selectivity_pct:.0f}% before ANN. "
+            f"CAVEAT: Verify the full index fits in RAM with estimate_resources."
         )
         report.append(
-            "⚠️  Hyperscale Vector Index (HVI): SUBOPTIMAL for this selectivity — "
-            "it would scan the full graph when the filter could drastically shrink the search space."
+            "⚠️  Hyperscale Vector Index (HVI): SUBOPTIMAL at this selectivity — "
+            "it scans the full graph when the filter could dramatically shrink the search space."
         )
     else:
         report.append(
-            f"❌ Composite Vector Index (CVI): ELIMINATED. Filter retains {filter_selectivity_pct}% of corpus — "
-            f"the GSI pre-filter provides minimal reduction, causing massive memory pressure for little gain."
+            f"❌ Composite Vector Index (CVI): ELIMINATED — filter retains {filter_selectivity_pct}% of corpus. "
+            "The GSI pre-filter provides minimal reduction, wasting RAM for little gain."
         )
         report.append(
-            "✅ Hyperscale Vector Index (HVI): SUPPORTED. Designed for broad, low-selectivity searches "
-            "across large datasets with 2% DGM disk-centric storage."
+            "✅ Hyperscale Vector Index (HVI): VIABLE — designed for broad, low-selectivity searches "
+            "at massive scale with a 2% DGM disk-centric model."
         )
 
-    report.append("\nINSTRUCTION: Use these exact conclusions in your final give_recommendation call.")
+    report.append("\nINSTRUCTION: Use these conclusions in your give_recommendation call.")
     return "\n".join(report)
 
 
@@ -200,12 +189,12 @@ def compare_indexes(
             analysis["analysis"]["filter_verdict"] = (
                 f"Filter prunes to {filter_selectivity_pct}% of corpus — highly selective. "
                 f"Composite physically benefits: GSI reduces ANN scope by {100 - filter_selectivity_pct:.0f}%. "
-                f"BUT: verify the full index fits in RAM before committing to CVI."
+                f"BUT: verify the full index fits in RAM before committing."
             )
         else:
             analysis["analysis"]["filter_verdict"] = (
-                f"Filter retains {filter_selectivity_pct}% of corpus — moderately selective. "
-                f"Composite's GSI scan cost is not justified by the ANN reduction at this selectivity."
+                f"Filter retains {filter_selectivity_pct}% of corpus — low selectivity. "
+                f"Composite's GSI scan cost is not justified by the ANN reduction."
             )
     elif not has_hard_filter:
         analysis["analysis"]["filter_verdict"] = (
@@ -228,51 +217,28 @@ def compare_indexes(
     return analysis
 
 
-def estimate_resources(
-    vector_count: int,
-    dimension: int,
-    quantization: str = "None",
-    persist_full_vector: bool = True,
-) -> dict:
-    """Estimate memory and disk footprint for a vector index.
-
-    CRITICAL: Use this to verify a CVI or FTS index will fit in RAM before recommending it.
-    Also use it to justify quantization decisions.
-    """
-    bytes_per_vector = {
-        "None":    dimension * 4,         # 32-bit floats
-        "SQ8":     dimension * 1,          # 8-bit ints
-        "SQ4":     max(1, dimension // 2), # 4-bit
-        "PQ128X8": 128,
-        "PQ64X8":  64,
-        "PQ32X8":  32,
+def use_case_search(
+    search_type: str,
+    filter_selectivity: float,
+    scale_category: str,
+    latency_ms: int,
+    scale_change: bool = False,
+) -> list:
+    """Search the use case library for stored patterns similar to the user's signals."""
+    keyword_required = search_type in ("hybrid_keyword_vector", "filtered_hybrid")
+    user_signals = {
+        "search_type":        search_type,
+        "filter_selectivity": filter_selectivity,
+        "scale_category":     scale_category,
+        "keyword_required":   keyword_required,
+        "latency_ms":         latency_ms,
+        "scale_change":       scale_change,
     }
-
-    bpv = bytes_per_vector.get(quantization, dimension * 4)
-    index_bytes = vector_count * bpv
-    full_vector_bytes = vector_count * dimension * 4 if persist_full_vector else 0
-    total_bytes = index_bytes + full_vector_bytes
-
-    def fmt_gb(b: int) -> float:
-        return round(b / (1024 ** 3), 2)
-
-    return {
-        "vector_count": f"{vector_count:,}",
-        "dimension": dimension,
-        "quantization": quantization,
-        "index_size_gb": fmt_gb(index_bytes),
-        "full_vector_storage_gb": fmt_gb(full_vector_bytes) if persist_full_vector else "N/A (disabled)",
-        "total_estimated_gb": fmt_gb(total_bytes),
-        "persist_full_vector": persist_full_vector,
-        "note": (
-            "Raw vector storage estimate. Add ~20–30% overhead for metadata, "
-            "centroid structures, and operational headroom."
-        ),
-    }
+    return find_similar_cases(user_signals, _USE_CASES_PATH, top_n=3)
 
 
 # ---------------------------------------------------------------------------
-# TERMINAL TOOLS — Handled by the agent loop, not executed here
+# TERMINAL TOOLS (signal only — rendered by the UI layer)
 # ---------------------------------------------------------------------------
 
 class Option(TypedDict):
@@ -285,49 +251,26 @@ class Question(TypedDict):
     anchor: str
     why_asking: str
     options: List[Option]
-    allow_free_form: Optional[bool]
-    free_form_label: Optional[str]
 
 
 def ask_user(message: str, questions: List[Question]) -> str:
-    """
-    TERMINAL TOOL. Call this when you identify gaps that prevent you from
-    confidently recommending an index. Explain WHY you need to know —
-    the user should understand what changes based on their answer.
-    """
+    """TERMINAL TOOL. Ask clarifying questions when critical information is
+    missing. Every question MUST have 3–4 concrete options."""
     return "Questions presented to user."
-
-
-class QueryPatternRecommendation(TypedDict):
-    query_pattern: str
-    recommended_index: str
-    reasoning: str
-    eliminated_alternatives: Dict[str, str]
-    caveats: Optional[List[str]]
-
-
-class ArchitectureSummary(TypedDict):
-    total_indexes: int
-    index_types_used: List[str]
-    shared_indexes: str
-    operational_notes: str
 
 
 def give_recommendation(
     summary: str,
-    query_pattern_recommendations: List[QueryPatternRecommendation],
-    architecture_summary: ArchitectureSummary
+    query_pattern_recommendations: list,
+    architecture_summary: dict,
 ) -> str:
-    """
-    TERMINAL TOOL. Call this when you are confident in your reasoning
-    and have validated your configuration. Provides the final output
-    with full physical reasoning and eliminated alternatives.
-    """
+    """TERMINAL TOOL. Deliver the final index recommendation. Only call after
+    evaluate_index_viability has returned a report."""
     return "Recommendation delivered to user."
 
 
 # ---------------------------------------------------------------------------
-# TOOL SCHEMAS — OpenAI / Gemini function calling format
+# TOOL SCHEMAS (Gemini function-calling format)
 # ---------------------------------------------------------------------------
 
 ALL_TOOL_SCHEMAS = [
@@ -336,20 +279,15 @@ ALL_TOOL_SCHEMAS = [
         "function": {
             "name": "think",
             "description": (
-                "Your scratchpad. Use this to reason out loud — dump what you know, "
-                "what you suspect, what trade-offs you're weighing, and what you're "
-                "uncertain about. Like an SE whiteboarding. Use liberally before making decisions."
+                "Your scratchpad. Use before making decisions — dump what you know, "
+                "what's missing, and what tradeoffs you're weighing."
             ),
             "parameters": {
                 "type": "object",
                 "properties": {
                     "reasoning": {
                         "type": "string",
-                        "description": (
-                            "Your current reasoning in natural language — what you know, "
-                            "what you don't know, what tradeoffs you're considering, "
-                            "what your current hypothesis is."
-                        ),
+                        "description": "Your current reasoning in natural language.",
                     },
                 },
                 "required": ["reasoning"],
@@ -360,10 +298,7 @@ ALL_TOOL_SCHEMAS = [
         "type": "function",
         "function": {
             "name": "plan",
-            "description": (
-                "Outline what you'll do next and why. Call this at the start of a new "
-                "user request to structure your approach."
-            ),
+            "description": "Outline your approach at the start of a new user request.",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -389,7 +324,7 @@ ALL_TOOL_SCHEMAS = [
         "function": {
             "name": "update_state",
             "description": (
-                "Record confirmed facts, query patterns, open gaps, or reasoning into your "
+                "Record confirmed facts, query patterns, open gaps, or reasoning into "
                 "persistent memory. Call this whenever you learn something new from the user."
             ),
             "parameters": {
@@ -431,16 +366,16 @@ ALL_TOOL_SCHEMAS = [
         "function": {
             "name": "web_search",
             "description": (
-                "Search the web for specific factual lookups: embedding model dimensions, "
-                "Couchbase parameter limits, or recent documentation. "
-                "NEVER use for architectural decisions — use your knowledge base for those."
+                "Search the web for specific factual lookups: Couchbase parameter limits, "
+                "release notes, or other verifiable facts. "
+                "Do NOT use this for architectural decisions."
             ),
             "parameters": {
                 "type": "object",
                 "properties": {
                     "query": {
                         "type": "string",
-                        "description": "Search query (e.g. 'all-MiniLM-L6-v2 embedding dimensions')",
+                        "description": "Search query (e.g. 'Couchbase FTS 100M vector limit')",
                     },
                 },
                 "required": ["query"],
@@ -450,29 +385,71 @@ ALL_TOOL_SCHEMAS = [
     {
         "type": "function",
         "function": {
+            "name": "use_case_search",
+            "description": (
+                "Search the use case library for stored patterns similar to the user's confirmed signals. "
+                "Returns up to 3 matches with similarity scores, recommended indexes, and reasoning. "
+                "Call this in TWO situations:\n"
+                "1. EARLY — once you know search_type and scale_category — to find precedents that guide follow-up questions.\n"
+                "2. AFTER all signals are confirmed — to cross-validate your reasoning before give_recommendation.\n"
+                "Make your own decision, don't blindly follow the use case library, use it ONLY as a reference. "
+                "If your recommendation differs from a strong match, explain why. "
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "search_type": {
+                        "type": "string",
+                        "enum": ["pure_vector", "filtered_vector", "hybrid_keyword_vector", "filtered_hybrid"],
+                        "description": "The fundamental query pattern.",
+                    },
+                    "filter_selectivity": {
+                        "type": "number",
+                        "description": "Fraction of data remaining after metadata filter (0.0–1.0). Use 1.0 if no filter.",
+                    },
+                    "scale_category": {
+                        "type": "string",
+                        "enum": ["small", "medium", "large", "massive", "billion_plus"],
+                        "description": "Dataset size tier: small=<1M, medium=1M-50M, large=50M-100M, massive=100M-1B, billion_plus=>1B.",
+                    },
+                    "latency_ms": {
+                        "type": "integer",
+                        "description": "Latency SLA in milliseconds.",
+                    },
+                    "scale_change": {
+                        "type": "boolean",
+                        "description": "True if dataset is projected to grow from <100M to >100M vectors.",
+                    },
+                },
+                "required": ["search_type", "filter_selectivity", "scale_category", "latency_ms", "scale_change"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "evaluate_index_viability",
             "description": (
-                "CRITICAL: Call this before give_recommendation. "
-                "Evaluates the physical limits of vector counts and selectivities "
-                "against Couchbase boundaries (e.g., the 100M FTS limit, selectivity thresholds)."
+                "MANDATORY before give_recommendation. Evaluates which index types are "
+                "viable given scale, filter selectivity, and keyword search requirements."
             ),
             "parameters": {
                 "type": "object",
                 "properties": {
                     "projected_vector_count": {
                         "type": "string",
-                        "description": "The 3-YEAR PROJECTED vector count (e.g., '50000000' or '50M').",
+                        "description": "3-year projected vector count (e.g. '50000000' or '50M').",
                     },
                     "filter_selectivity_pct": {
                         "type": "string",
                         "description": (
-                            "Percentage of data REMAINING after filters (e.g., '15' means 15% remains). "
+                            "Percentage of data REMAINING after filters (e.g. '15' means 15% remains). "
                             "Use '100' if no filters are applied."
                         ),
                     },
                     "requires_keyword_search": {
                         "type": "string",
-                        "description": "'true' or 'false'. Does the user need typos, fuzzy matching, or lexical BM25 search?",
+                        "description": "'true' or 'false'. Does the user need fuzzy matching or BM25 keyword search?",
                     },
                 },
                 "required": ["projected_vector_count", "filter_selectivity_pct", "requires_keyword_search"],
@@ -485,7 +462,7 @@ ALL_TOOL_SCHEMAS = [
             "name": "compare_indexes",
             "description": (
                 "Side-by-side tradeoff analysis of two index strategies. "
-                "Reasons about scale, filter behaviour, and migration risk for the specific situation."
+                "Use when two options are genuinely close to explain the difference clearly."
             ),
             "parameters": {
                 "type": "object",
@@ -505,7 +482,7 @@ ALL_TOOL_SCHEMAS = [
                     },
                     "filter_selectivity_pct": {
                         "type": "number",
-                        "description": "Percentage of corpus REMAINING after filter (e.g. 2 means 2% remains)",
+                        "description": "Percentage of corpus REMAINING after filter",
                     },
                     "latency_target_ms": {
                         "type": "integer",
@@ -519,35 +496,9 @@ ALL_TOOL_SCHEMAS = [
     {
         "type": "function",
         "function": {
-            "name": "estimate_resources",
-            "description": (
-                "CRITICAL: Estimate memory and disk footprint for a vector index. "
-                "Use this to prove a CVI or FTS index fits in RAM before offering it. "
-                "Also use when deciding quantization level."
-            ),
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "vector_count": {"type": "integer"},
-                    "dimension": {"type": "integer"},
-                    "quantization": {
-                        "type": "string",
-                        "enum": ["SQ8", "SQ4", "PQ128X8", "PQ64X8", "PQ32X8", "None"],
-                    },
-                    "persist_full_vector": {"type": "boolean"},
-                },
-                "required": ["vector_count", "dimension", "quantization", "persist_full_vector"],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
             "name": "ask_user",
             "description": (
-                "TERMINAL TOOL. Call this when you identify gaps that prevent you from "
-                "confidently recommending an index. Explain WHY you need to know — "
-                "the user should understand what changes based on their answer. "
+                "TERMINAL TOOL. Ask clarifying questions when critical information is missing. "
                 "Every question MUST have 3–4 concrete options."
             ),
             "parameters": {
@@ -566,18 +517,15 @@ ALL_TOOL_SCHEMAS = [
                                 "question": {"type": "string"},
                                 "anchor": {
                                     "type": "string",
-                                    "description": "Reference the user's words, e.g., 'You mentioned category browsing...'",
+                                    "description": "Reference the user's words, e.g. 'You mentioned category browsing...'",
                                 },
                                 "why_asking": {
                                     "type": "string",
-                                    "description": "Explain physically/causally why this changes the recommendation.",
+                                    "description": "Why this answer changes the recommendation.",
                                 },
                                 "options": {
                                     "type": "array",
-                                    "description": (
-                                        "MANDATORY: Provide 3–4 concrete options. "
-                                        "An 'Other / Type here' option is added automatically by the UI."
-                                    ),
+                                    "description": "3–4 concrete options. 'Other / Type here' is added automatically.",
                                     "items": {
                                         "type": "object",
                                         "properties": {
@@ -587,8 +535,6 @@ ALL_TOOL_SCHEMAS = [
                                         "required": ["id", "label"],
                                     },
                                 },
-                                "allow_free_form": {"type": "boolean"},
-                                "free_form_label": {"type": "string"},
                             },
                             "required": ["question", "anchor", "why_asking", "options"],
                         },
@@ -603,9 +549,8 @@ ALL_TOOL_SCHEMAS = [
         "function": {
             "name": "give_recommendation",
             "description": (
-                "TERMINAL TOOL. Call this ONLY after evaluate_index_viability has returned a report "
-                "AND all required metrics (Scale, Growth, Selectivity, Dimension, Metric, Search Type) "
-                "have been confirmed via ask_user. DO NOT GUESS OR INFER."
+                "TERMINAL TOOL. Deliver the final index recommendation. "
+                "Only call after evaluate_index_viability has returned a verdict."
             ),
             "parameters": {
                 "type": "object",
@@ -620,13 +565,13 @@ ALL_TOOL_SCHEMAS = [
                                 "recommended_index": {"type": "string"},
                                 "reasoning": {
                                     "type": "string",
-                                    "description": "Physical reasoning: I/O cost, scale, filter mechanics.",
+                                    "description": "Physical reasoning: scale, filter mechanics, RAM constraints.",
                                 },
                                 "eliminated_alternatives": {
                                     "type": "object",
                                     "additionalProperties": {
                                         "type": "string",
-                                        "description": "Why it was eliminated — physical reasoning.",
+                                        "description": "Why this index was eliminated.",
                                     },
                                 },
                                 "caveats": {
@@ -656,11 +601,7 @@ ALL_TOOL_SCHEMAS = [
                         },
                     },
                 },
-                "required": [
-                    "summary",
-                    "query_pattern_recommendations",
-                    "architecture_summary",
-                ],
+                "required": ["summary", "query_pattern_recommendations", "architecture_summary"],
             },
         },
     },
@@ -673,11 +614,8 @@ ALL_TOOL_SCHEMAS = [
 
 def execute_tool(tool_name: str, args: dict, session_state: Optional[dict] = None) -> Any:
     """Execute a non-terminal tool and return its result.
-
     Terminal tools (ask_user, give_recommendation) are handled by the agent loop.
     """
-    import re
-
     try:
         if tool_name == "think":
             return think(args.get("reasoning", ""))
@@ -688,13 +626,22 @@ def execute_tool(tool_name: str, args: dict, session_state: Optional[dict] = Non
         elif tool_name == "update_state":
             if session_state is not None:
                 return update_state(session_state, args)
-            return "Error: No session state available for update_state."
+            return "Error: No session state available."
 
         elif tool_name == "web_search":
             return web_search(args.get("query", ""))
 
+        elif tool_name == "use_case_search":
+            return use_case_search(
+                search_type=args.get("search_type", "filtered_vector"),
+                filter_selectivity=float(args.get("filter_selectivity", 1.0)),
+                scale_category=args.get("scale_category", "medium"),
+                latency_ms=int(args.get("latency_ms", 100)),
+                scale_change=bool(args.get("scale_change", False)),
+            )
+
         elif tool_name == "evaluate_index_viability":
-            # Robust parsing — handle loose LLM string outputs like "50M", "15-20%", "true"
+            # Parse loose LLM string outputs like "50M", "15-20%", "true"
             vc_raw = str(args.get("projected_vector_count", "0")).upper()
             vc_multiplier = 1_000_000 if "M" in vc_raw else (1_000 if "K" in vc_raw else 1)
             vc_clean = re.sub(r"[^\d.]", "", vc_raw)
@@ -730,16 +677,8 @@ def execute_tool(tool_name: str, args: dict, session_state: Optional[dict] = Non
                 latency_target_ms=args.get("latency_target_ms"),
             )
 
-        elif tool_name == "estimate_resources":
-            return estimate_resources(
-                vector_count=int(args.get("vector_count", 0)),
-                dimension=int(args.get("dimension", 768)),
-                quantization=args.get("quantization", "None"),
-                persist_full_vector=bool(args.get("persist_full_vector", True)),
-            )
-
         else:
-            return f"Tool '{tool_name}' not found or is a terminal tool handled by the agent loop."
+            return f"Unknown tool: '{tool_name}'."
 
     except Exception as e:
         logger.error(f"Tool execution error [{tool_name}]: {e}")
