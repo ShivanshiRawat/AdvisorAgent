@@ -400,7 +400,7 @@
         },
         {
             "pattern_id": "UC-008-QP1",
-            "short_description": "Exact KNN genetic profile matching for a small-scale cancer research dataset.",
+            "short_description": "Genetic profile matching for a small-scale cancer research dataset.",
             "signals": {
                 "search_type": "pure_vector",
                 "filter_selectivity": 1.0,
@@ -418,13 +418,12 @@
             "binding_constraint": "small_scale_simplicity",
             "decision_factors": [
                 "Dataset is small (<1M vectors) and does not require scaling",
-                "Exact KNN matching is required rather than approximate search",
                 "No filtering or keywords are necessary",
                 "Query latency is flexible, allowing simple index structures",
                 "Minimal operational overhead is preferred for research workloads"
             ],
             "growth_note": "Zero growth ensures the exact matching approach will never hit a performance wall.",
-            "why_chosen": "FTS/Search Vector handles small datasets and exact KNN with minimal configuration overhead.",
+            "why_chosen": "FTS/Search Vector handles small datasets with minimal configuration overhead.",
             "why_not": {
                 "HVI": "HVI is designed for approximate search; exact search at this scale is easier in FTS.",
                 "CVI": "No scalar filters exist to justify the complexity of a Composite index.",

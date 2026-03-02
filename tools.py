@@ -129,11 +129,13 @@ def evaluate_index_viability(
 
     # Selectivity rule
     if filter_selectivity_pct < 20:
-        report.append(
-            f"✅ Composite Vector Index (CVI): VIABLE — filter prunes to {filter_selectivity_pct}% of corpus. "
+        recommendation = (
+            f"✅ Composite Vector Index (CVI): RECOMMENDED — filter prunes to {filter_selectivity_pct}% of corpus. "
             f"GSI eliminates {100 - filter_selectivity_pct:.0f}% before ANN. "
-            f"CAVEAT: Verify the full index fits in RAM with estimate_resources."
         )
+        if projected_vector_count >= 1_000_000_000:
+            recommendation += "⚠️  CAVEAT: At billion-scale, ensure the full index fits in RAM or consider HVI."
+        report.append(recommendation)
         report.append(
             "⚠️  Hyperscale Vector Index (HVI): SUBOPTIMAL at this selectivity — "
             "it scans the full graph when the filter could dramatically shrink the search space."
@@ -389,11 +391,12 @@ ALL_TOOL_SCHEMAS = [
             "description": (
                 "Search the use case library for stored patterns similar to the user's confirmed signals. "
                 "Returns up to 3 matches with similarity scores, recommended indexes, and reasoning. "
+                "MANDATORY: You must call this tool at least once before give_recommendation. "
                 "Call this in TWO situations:\n"
                 "1. EARLY — once you know search_type and scale_category — to find precedents that guide follow-up questions.\n"
-                "2. AFTER all signals are confirmed — to cross-validate your reasoning before give_recommendation.\n"
-                "Make your own decision, don't blindly follow the use case library, use it ONLY as a reference. "
-                "If your recommendation differs from a strong match, explain why. "
+                "2. LATE — after all signals are confirmed — to cross-validate your reasoning before give_recommendation.\n"
+                "Use the results to understand the underlying thinking, but do NOT treat them as ground truth. "
+                "Make your own decision using your intelligence. If your recommendation differs from a strong match, explain why. "
             ),
             "parameters": {
                 "type": "object",
