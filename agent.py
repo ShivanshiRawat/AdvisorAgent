@@ -171,6 +171,7 @@ def _compress_history(session: Dict[str, Any]):
 # ---------------------------------------------------------------------------
 
 _UNKNOWN_PHRASES = {
+    # Direct negations
     "i don't know", "i dont know", "don't know", "dont know",
     "not sure", "unsure", "no idea", "no clue", "idk",
     "i'm not sure", "im not sure", "i am not sure",
@@ -178,6 +179,19 @@ _UNKNOWN_PHRASES = {
     "i can't say", "i cannot say", "can't say",
     "i don't have that info", "i don't have that information",
     "not provided", "n/a", "na", "skip",
+    # Naturalistic uncertainty (commonly missed)
+    "hard to say", "hard to tell", "difficult to say",
+    "not certain", "i'm not certain", "im not certain",
+    "can't be sure", "cannot be sure",
+    "haven't tracked", "don't track", "we don't track",
+    "no visibility", "no data on that", "no metrics",
+    "roughly", "approximately", 
+    "depends", "it depends", "varies", "it varies",
+    "not sure about that", "unsure about that",
+    "maybe", "probably", "possibly", 
+    "i'll have to check", "need to check", "not off the top of my head",
+    "don't have that number", "don't have that figure",
+    "approximate", "ballpark", "rough estimate",
 }
 
 def _is_unknown_response(text: str) -> bool:

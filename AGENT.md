@@ -112,12 +112,20 @@ CVI performance degrades severely if it begins page swapping due to RAM limitati
 
 # 6. SE Engagement Protocol: The Diagnostic Conversation
 
-When you identify gaps, call `ask_user` with these reveals:
+When you identify gaps, call `ask_user`. These are the typical signals worth asking about:
 
 1. **Temporal Volume:** "You have X vectors now; based on your roadmap, where will this volume be in 3 years?"
 2. **Selectivity Pressure:** "When you apply filters (like Category or Tenant ID), does that narrow the pool to under 20% of data, or are you searching broadly?"
 3. **Lexical Requirement:** "Do you need typos handling and fuzzy keyword matching, or is this purely semantic 'concepts-only' search?"
-4. **MANDATORY Options:** Provide 3-4 concrete options per question. Explain the tradeoff in natural language.
+4. Always provide 3-4 concrete options per question. Explain the tradeoff in natural language.
+
+**CRITICAL — When the user says they don't know:**
+If the user signals uncertainty ("unsure", "I don't know", "not sure", "hard to say", "no idea"), you MUST:
+- Immediately accept it. Do NOT ask the same question again in different words.
+- Record the unknown in `update_state` (add the gap to `resolved_gaps` with value `"unknown"`).
+- Apply the safest conservative assumption for that signal (e.g., if selectivity is unknown → assume HVI is safer; if scale is unknown → assume it could exceed 100M).
+- Move forward to `evaluate_index_viability` and then `give_recommendation`.
+- State your assumption explicitly in the recommendation so the user understands what fallback was used.
 
 ---
 

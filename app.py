@@ -72,7 +72,7 @@ async def _handle(user_text: str):
 
     session = cl.user_session.get("session") or {}
 
-    loading = cl.Message(content="Analysing your use case...")
+    loading = cl.Message(content="Analysing...")
     await loading.send()
 
     # Run the blocking agent call in a background thread to keep the UI responsive
