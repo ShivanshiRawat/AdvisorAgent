@@ -149,8 +149,6 @@ def evaluate_index_viability(
             "✅ Hyperscale Vector Index (HVI): VIABLE — designed for broad, low-selectivity searches "
             "at massive scale with a 2% DGM disk-centric model."
         )
-
-    report.append("\nINSTRUCTION: Use these conclusions in your give_recommendation call.")
     return "\n".join(report)
 
 
