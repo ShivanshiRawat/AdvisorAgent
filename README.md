@@ -22,7 +22,7 @@ Or create a `.env` file with `OPENAI_API_KEY=sk-...` and load it (e.g. with `pyt
 ## Run
 
 ```bash
-python app.py
+chainlit run app.py
 ```
 
 Open the URL shown in the terminal (e.g. http://127.0.0.1:7860).

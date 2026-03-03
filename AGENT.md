@@ -48,7 +48,7 @@
 
 ## D. Hybrid (HVI + FTS) Strategy
 **Architecture:** Orchestrated use of HVI (for billion-scale vectors) and FTS Service (for lexical keywords).
-**Primary Signal:** Large-scale Hybrid Search — Text + Semantic at scale exceeding FTS limits.
+**Primary Signal:** Large-scale Hybrid Search — Text + Semantic at scale exceeding Search vector index limits.
 **Description:** HVI handles the billion-scale vector workload while FTS handles keyword indexing. Results from both are combined and re-ranked at the application layer.
 **Best For:**
 - Datasets exceeding the FTS memory ceiling (~100M vectors) that still require high-precision text matching.
@@ -82,7 +82,7 @@ Never assume current document counts are static.
 **Infrastructure Risk:** Moving from FTS (Search API) to GSI (SQL++ syntax) is a heavy application rewrite.
 
 ## Pivot 2: Filter Selectivity Logic
-**HIGH Selectivity (< 20% data remains):** Recommend Composite. If structured filters (e.g., WHERE tenant_id = 'X') eliminate 80%+ of data, pre-filtering avoids millions of unnecessary vector comparisons. At million-scale (e.g. 50M-500M), this is the default preference regardless of RAM costs, unless specifically constrained.
+**HIGH Selectivity (< 20% data remains):** Recommend Composite. If structured filters (e.g., WHERE tenant_id = 'X') eliminate 80%+ of data, pre-filtering avoids millions of unnecessary vector comparisons.
 **LOW Selectivity (> 20% data remains):** Recommend Hyperscale. When filters are weak, HVI's simultaneous graph traversal is more efficient than scanning a large, barely-reduced filtered index.
 
 ## Pivot 3: Search Persona (Lexical vs. Semantic)
@@ -90,11 +90,7 @@ Never assume current document counts are static.
 **Billion-Scale Lexical:** Requires the Hybrid HVI + FTS configuration.
 
 ## Pivot 4: The Scale Bottleneck (CVI → HVI Pivot)
-CVI performance degrades severely if it begins page swapping due to RAM limitations. This becomes a primary decision driver ONLY if:
-1. The dataset is at massive scale (billion-scale).
-2. The user explicitly mentions that RAM or memory cost is a critical constraint.
-3. The dataset is mentioned as growing very rapidly (e.g. 50M today to 1B in 2 years).
-Otherwise, at million-scale with <20% selectivity, prioritize the performance gains of CVI's filter-first approach.
+CVI performance degrades severely if it begins page swapping due to RAM limitations. If a dataset is very large(1000M or BILLION SCALE), user mentioned that it is very rapidly growing, or mentioned explicitly RAM-constrained, the Solution Engineer must pivot to HVI, which uses a 2% DGM disk-centric model.
 
 ---
 ## Pivot 5: Infrastructure Inventory & Neighborhood

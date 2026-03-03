@@ -63,7 +63,7 @@
             "recommended_index": "HVI",
             "binding_constraint": "massive_scale",
             "decision_factors": [
-                "Reuses same 300M+ product vector corpus",
+                "300M+ product vector corpus",
                 "Vector only search needed at that scale",
                 "Strict tail-latency requirements under high concurrency",
                 "ANN-first retrieval with lightweight business filters",
@@ -74,7 +74,7 @@
             "why_not": {
                 "CVI": "No filtration needed",
                 "FTS_Vector_Search": "FTS_Vector_Search does not perform well at 300M scale",
-                "Hybrid": "Hybrid adds keyword overhead that is unnecessary for pure embedding-driven recommendations."
+                "Hybrid": "We do not need keyword search and hybrid adds keyword overhead that is unnecessary for pure embedding-driven recommendations."
             },
             "signature_vector": [
                 0.0,
@@ -116,9 +116,9 @@
             "growth_note": "Composite can handle billion scale here effectively due to high selectivity",
             "why_chosen": "Composite can handle billion scale here effectively due to high selectivity. Pre-filtering reduces the search space across the ecommerce catalogs.",
             "why_not": {
-                "HVI": "Does not provide optimized keyword-first ranking for browse-heavy workflows.",
+                "HVI": "Does not work better than composite when filters reduce the search space to less than 20% of the data",
                 "FTS_Vector_Search": "FTS_Vector_Search alone cannot deliver high-quality semantic similarity ranking.",
-                "Hybrid": "Hybrid adds keyword overhead that is unnecessary for pure embedding-driven recommendations."
+                "Hybrid": "Hybrid adds keyword overhead that is not needed for pure embedding-driven recommendations."
             },
             "signature_vector": [
                 0.0,
@@ -161,9 +161,9 @@
             ],
             "why_chosen": "HVI is purpose-built for hyperscale ANN workloads with billion-scale growth, high QPS, and strict tail-latency guarantees.",
             "why_not": {
-                "CVI": "CVI performs really bad at that low level of selectivity",
+                "CVI": "CVI performs really bad at that low level of selectivity when compared to hybrid",
                 "FTS_Vector_Search": "FTS_Vector_Search cannot sustain billion-scale ANN workloads with predictable latency under extreme QPS.",
-                "Hybrid": "Hybrid adds unnecessary keyword infrastructure overhead since the dominant retrieval pattern is pure embedding similarity with lightweight filters."
+                "Hybrid": "Hybrid adds unnecessary keyword infrastructure overhead that is not needed since the dominant retrieval pattern is pure embedding similarity with lightweight filters."
             },
             "signature_vector": [
                 0.0,
@@ -422,12 +422,12 @@
                 "Query latency is flexible, allowing simple index structures",
                 "Minimal operational overhead is preferred for research workloads"
             ],
-            "growth_note": "Zero growth ensures the exact matching approach will never hit a performance wall.",
+            "growth_note": "Stable growth ensures the exact matching approach will never hit a performance wall.",
             "why_chosen": "FTS/Search Vector handles small datasets with minimal configuration overhead.",
             "why_not": {
-                "HVI": "HVI is designed for approximate search; exact search at this scale is easier in FTS.",
-                "CVI": "No scalar filters exist to justify the complexity of a Composite index.",
-                "Hybrid": "Keyword search is not required for genetic sequence matching."
+                "HVI": "HVI is designed for approximate search; At this scale fts vector search is easier and manageable",
+                "CVI": "No scalar filters exist to justify the complexity of a Composite index at this small scale.",
+                "Hybrid": "Both HVI(optimized to handle billion scale) and Keyword search is not required for genetic sequence matching."
             },
             "signature_vector": [
                 1.0,
@@ -485,50 +485,6 @@
                 0.0,
                 0.1,
                 1.0
-            ]
-        },
-        {
-            "pattern_id": "UC-010-QP1",
-            "short_description": "Enterprise document discovery platform where users search embeddings but must filter by department and region. Today the department filter matches ~30% of documents (moderately selective), but as the company rolls out global tagging standardization, almost all documents will share the same department-level tags, reducing selectivity below 20% and eventually making filter-first pruning ineffective.",
-            "signals": {
-                "search_type": "filtered_vector",
-                "filter_selectivity": 0.3,
-                "scale_category": "medium",
-                "keyword_required": false,
-                "latency_ms": 200,
-                "scale_change": false
-            },
-            "scale": {
-                "current_scale": "1M-50M",
-                "growth_rate": "moderate",
-                "projected_scale": "50M-100M"
-            },
-            "recommended_index": "HVI",
-            "binding_constraint": "high_selectivity_filter",
-            "decision_factors": [
-                "Current filter selectivity (~30%) allows effective candidate pruning before vector scoring.",
-                "Dataset size is still manageable, so partition-based filtering improves latency.",
-                "Future tagging normalization will cause most documents to share the same filter values, reducing selectivity below 20%.",
-                "When selectivity drops, HVI loses efficiency because partitions become too large.",
-                "Switching to CVI later only requires rebuilding the index without application-layer query changes."
-            ],
-            "why_chosen": "HVI is chosen because current moderate filter selectivity provides meaningful pruning benefits at this scale.",
-            "why_not": {
-                "CVI": "CVI is less optimal today because it scans a larger candidate space without leveraging the still-useful filter selectivity.",
-                "FTS": "FTS is not suitable because the workload is semantic vector search rather than keyword-driven retrieval.",
-                "Hybrid": "Hybrid adds unnecessary complexity since keyword constraints are not required."
-            },
-            "signature_vector": [
-                0.0,
-                1.0,
-                0.0,
-                0.0,
-                0.3,
-                1.0,
-                0.0,
-                0.0,
-                0.2,
-                0.0
             ]
         }
     ]
