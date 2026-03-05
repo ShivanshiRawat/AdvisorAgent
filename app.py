@@ -46,8 +46,14 @@ TOOL_META = {
 async def on_chat_start():
     import asyncio
     cl.user_session.set("session", {})
-    # Minimal delay for AWS reliability (websocket readiness)
-    await asyncio.sleep(0.1)
+
+    # 1. Send an invisible/minimal message immediately to "warm up" the websocket
+    await cl.Message(content="*System initializing...*").send()
+
+    # 2. Short wait for AWS/remote connectivity to settle
+    await asyncio.sleep(1.0)
+
+    # 3. Send the primary welcome message
     await cl.Message(
         content=(
             "## Couchbase Vector Index Advisor\n\n"
