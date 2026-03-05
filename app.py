@@ -44,7 +44,10 @@ TOOL_META = {
 
 @cl.on_chat_start
 async def on_chat_start():
+    import asyncio
     cl.user_session.set("session", {})
+    # Minimal delay for AWS reliability (websocket readiness)
+    await asyncio.sleep(0.1)
     await cl.Message(
         content=(
             "## Couchbase Vector Index Advisor\n\n"
