@@ -18,6 +18,9 @@ cache = false
 # Authorized origins
 allow_origins = ["*"]
 
+# Force WebSocket transport to bypass intermittent polling handshake on AWS
+transports = ["websocket"]
+
 [features]
 # Process and display HTML in messages. This can be a security risk (see https://stackoverflow.com/questions/19603097/why-is-it-dangerous-to-render-user-generated-html-or-javascript)
 unsafe_allow_html = false
