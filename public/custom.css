@@ -1,0 +1,19 @@
+/* 1. Target the button's background and text color */
+#chat-submit {
+    background-color: #E72731 !important;
+    /* Changes the red background */
+    color: #FFFFFF !important;
+    /* Changes the icon color to white */
+}
+
+/* 2. Target the SVG icon specifically if color: #FFFFFF doesn't work */
+#chat-submit svg {
+    color: #FFFFFF !important;
+    fill: #FFFFFF !important;
+}
+
+/* 3. Style for when the button is disabled (e.g., no text typed) */
+#chat-submit:disabled {
+    background-color: #E72731 !important;
+    opacity: 0.5;
+}
