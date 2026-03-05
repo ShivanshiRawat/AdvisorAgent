@@ -18,9 +18,12 @@ cache = false
 # Authorized origins
 allow_origins = ["*"]
 
+<<<<<<< HEAD
 # Force WebSocket transport to bypass intermittent polling handshake on AWS
 transports = ["websocket"]
 
+=======
+>>>>>>> 612df39 (Added CB storage functionality)
 [features]
 # Process and display HTML in messages. This can be a security risk (see https://stackoverflow.com/questions/19603097/why-is-it-dangerous-to-render-user-generated-html-or-javascript)
 unsafe_allow_html = false
@@ -46,7 +49,11 @@ edit_message = true
     # 3. For specific file extensions:
     #    accept = { "application/octet-stream" = [".xyz", ".pdb"] }
     # Note: Using "*/*" is not recommended as it may cause browser warnings
+<<<<<<< HEAD
     accept = ["text/plain", "text/markdown", "application/json", "application/pdf", "image/png", "image/jpeg"]
+=======
+    accept = ["*/*"]
+>>>>>>> 612df39 (Added CB storage functionality)
     max_files = 20
     max_size_mb = 500
 
@@ -56,7 +63,8 @@ edit_message = true
 
 [UI]
 # Name of the assistant.
-name = "Couchbase Vector Index Advisor"
+
+name = "Assistant"
 
 # default_theme = "dark"
 

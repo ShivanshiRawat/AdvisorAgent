@@ -19,6 +19,7 @@ import chainlit as cl
 
 import config  # loads .env
 from agent import run_turn
+from storage import save_turn
 
 
 # ---------------------------------------------------------------------------
@@ -67,6 +68,15 @@ async def on_chat_start():
         )
     ).send()
 
+    session_id = cl.context.session.id
+    await cl.Message(
+        content=(
+            f"🔖 **Session ID** — share this if you report an issue:\n"
+            f"```\n{session_id}\n```"
+        ),
+        author="System",
+    ).send()
+
 
 
 # ---------------------------------------------------------------------------
@@ -93,6 +103,21 @@ async def _handle(user_text: str):
     await loading.remove()
 
     cl.user_session.set("session", session)
+
+    # Persist the turn to Couchbase (fire-and-forget, silent on failure)
+    try:
+        session_id = cl.context.session.id
+        await asyncio.to_thread(
+            save_turn,
+            session_id=session_id,
+            user_message=user_text,
+            response_type=response.get("type", "unknown"),
+            response_payload=response.get("payload", {}),
+            reasoning_trace=response.get("steps", []),
+            state_snapshot=dict(session.get("state", {})),
+        )
+    except Exception as _storage_err:
+        logger.error("Storage hook failed: %s", _storage_err)
 
     # Render the reasoning trace
     if response.get("steps"):
