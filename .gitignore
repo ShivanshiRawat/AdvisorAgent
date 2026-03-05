@@ -63,5 +63,3 @@ Thumbs.db
 *.swp
 *.swo
 
-# Chainlit
-.chainlit/

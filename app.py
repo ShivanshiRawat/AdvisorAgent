@@ -51,7 +51,7 @@ async def on_chat_start():
     await cl.Message(content="*System initializing...*").send()
 
     # 2. Short wait for AWS/remote connectivity to settle
-    await asyncio.sleep(1.0)
+    await asyncio.sleep(0.19)
 
     # 3. Send the primary welcome message
     await cl.Message(
