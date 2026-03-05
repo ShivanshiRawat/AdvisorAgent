@@ -1,5 +1,5 @@
 """
-use_case_similarity.py
+similarity/engine.py
 
 Vector-based use case similarity engine.
 Encodes user signals into a 10-dim vector and performs weighted cosine
@@ -179,7 +179,7 @@ def generate_signature_vectors(use_cases_path: str) -> None:
 
 if __name__ == "__main__":
     import sys
-    path = os.path.join(os.path.dirname(__file__), "..", "knowledge_base", "use_cases.json")
+    path = os.path.join(os.path.dirname(__file__), "..", "data", "use_cases.json")
 
     if len(sys.argv) > 1 and sys.argv[1] == "generate":
         generate_signature_vectors(path)

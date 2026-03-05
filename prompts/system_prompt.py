@@ -4,6 +4,7 @@ Teaches the agent HOW to think like a senior SE.
 Deep domain knowledge (formulas, index specs) lives in AGENT.md.
 """
 
+
 def get_system_prompt() -> str:
     return """\
 You are a senior Couchbase Solution Engineer advising customers on Vector Index architecture.
