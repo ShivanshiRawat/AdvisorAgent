@@ -48,16 +48,22 @@ async def on_chat_start():
     cl.user_session.set("session", {})
 
     # Optimized delay for AWS reliability (websocket readiness)
-    await asyncio.sleep(0.2)
 
-    # 3. Send the primary welcome message
     await cl.Message(
         content=(
-            "## Couchbase Vector Index Advisor\n\n"
-            "Describe your use case — what you're building, the data you have, "
-            "how users search, your scale, and any performance requirements.\n\n"
-            "I'll reason through the best index architecture and ask follow-up "
-            "questions only when something critical is missing."
+            "### **Welcome to the Couchbase Vector Advisor**\n\n"
+            "I am here to help you find the most efficient and cost-effective way to build search into your application. "
+            "Whether you are just starting out, preparing for massive growth, or simply have questions about Couchbase "
+            "vector indexes, I can guide you to the right setup for your needs.\n\n"
+            "--- \n\n"
+            "**How to get started:**\n"
+            "Simply describe your project or paste your use case below. Tell me a bit about what you are building, "
+            "the amount of data you expect, and your specific goals for speed or accuracy.\n\n"
+            "**From our conversation, I will:**\n"
+            "* **Recommend the best index** for your specific scenario.\n"
+            "* **Identify the simplest path** based on your current setup.\n"
+            "* **Provide expert answers** to any questions regarding index architecture.\n\n"
+            "Please share your use case or ask a question to begin!"
         )
     ).send()
 
