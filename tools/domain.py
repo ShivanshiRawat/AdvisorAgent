@@ -232,7 +232,7 @@ PARTITION BY HASH(meta().id)
 WITH {
   "dimension": <integer_dimensions>,
   "similarity": "<COSINE | DOT | L2 | L2_SQUARED>",
-  "description": "<IVF_centroids,SQ_bits | IVF_centroids,PQ_subquantizers>",
+  "description": "<IVFcentroids,SQ_bits | IVF_centroids,PQ_subquantizers>",
   "train_list": <integer_sample_size>,
   "persist_full_vector": <true | false>,
   "scan_nprobes": <integer_cells_to_scan>,
@@ -271,7 +271,8 @@ PARTITION BY HASH(`<scalar_field_1>`)
 WITH {
   "dimension":   <integer — must match your embedding model output, e.g. 1536>,
   "similarity":  "<COSINE | DOT | L2 | L2_SQUARED>",
-  "description": "<IVF_<centroids>,SQ8>",
+  "description": "<IVF<centroids>,SQ8>",
+  "scan_nprobes": <integer_cells_to_scan>,
   "train_list":  <integer — sample size for quantisation training, e.g. 100000>,
   "num_replica": <integer — index replicas for HA, e.g. 1>,
   "defer_build": <true | false>
@@ -321,7 +322,7 @@ LIMIT <top_k>;""",
 -- Hybrid keyword + vector search via FTS
 SELECT meta().id, `<scalar_fields>`, score() AS relevance_score
 FROM `<bucket>`.`<scope>`.`<collection>`
-WHERE SEARCH(`<collection>`, {
+WHERE SEARCH(`<keyspace>`, {
     "query": {
         "match": "<keyword_query_string>",
         "field":  "<text_field>"
