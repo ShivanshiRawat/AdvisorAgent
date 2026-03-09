@@ -202,7 +202,23 @@ async def _render_trace(steps: List[Dict[str, Any]]):
             parts.append("\n".join(lines) if lines else thought or "State updated.")
 
         elif tool == "web_search":
-            parts.append(thought or "Performed web search.")
+            query = args.get("query", "")
+            search_parts = []
+            if query:
+                search_parts.append(f"**Query:** `{query}`")
+            if thought:
+                search_parts.append(thought)
+
+            # Show source URLs if available
+            source_urls = step_data.get("source_urls", [])
+            if source_urls:
+                links = "\n".join(
+                    f"  {i}. [{s.get('title', s['url'])}]({s['url']})"
+                    for i, s in enumerate(source_urls, 1)
+                )
+                search_parts.append(f"**Sources consulted:**\n{links}")
+
+            parts.extend(search_parts)
 
         else:
             # Generic: show reason + result

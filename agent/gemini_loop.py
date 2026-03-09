@@ -247,18 +247,35 @@ def _run_gemini_turn(
                     )
 
                 else:
-                    result = execute_tool(tool_name, args, session_state=session.get("state"))
+                    result = execute_tool(
+                        tool_name,
+                        args,
+                        session_state=session.get("state"),
+                        gemini_client=client,
+                        gemini_model=config.MODEL,
+                    )
+
+                    # web_search returns (text, source_urls) tuple
+                    source_urls = []
+                    if tool_name == "web_search" and isinstance(result, tuple):
+                        result, source_urls = result
+
                     result_str = (
                         json.dumps(result, default=str)
                         if isinstance(result, dict)
                         else str(result)
                     )
-                    ephemeral_trace.append({
+
+                    trace_entry = {
                         "tool": tool_name,
                         "args": args,
                         "content": thought,
                         "result": result_str,
-                    })
+                    }
+                    if source_urls:
+                        trace_entry["source_urls"] = source_urls
+
+                    ephemeral_trace.append(trace_entry)
                     response_payload = (
                         result if isinstance(result, dict) else {"result": result_str}
                     )

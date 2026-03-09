@@ -6,13 +6,19 @@
 
 ## A. Hyperscale Vector Index (HVI / BHIVE)
 
-**Architecture:** DiskANN / Vamana Graph.
+**Architecture:** Proprietary hybrid of IVF clustering, HNSW (routing layer), and Vamana/DiskANN (cluster layer).
 
-**Storage Model:** Disk-centric (SSD) with a compact graph structure (routing layer) held in memory.
+**Internal Two-Layer Design:**
+
+- **Routing Layer — HNSW of Centroids (in RAM):** HVI partitions the vector space into IVF clusters. The centroids of these clusters are organized into an **HNSW graph** held entirely in RAM. When a query arrives, this HNSW graph routes it to the most relevant clusters in *O(log N)* time without scanning all centroids linearly. HNSW is present in HVI — but only at this routing/navigation layer.
+
+- **Cluster Layer — Vamana Graph (on SSD):** Inside each cluster, the actual user vectors are connected using a **Vamana graph** (the core algorithm of Microsoft's DiskANN). Vamana is a flat, non-hierarchical graph optimized for SSD-resident data — it performs greedy traversals that minimize random I/O compared to hierarchical approaches like HNSW, making it the correct choice for disk-centric storage.
+
+**Storage Model:** Disk-centric (SSD) for the Vamana vector graph; compact HNSW centroid graph held in RAM (2% DGM ratio).
 
 **Primary Signal:** Massive scale — datasets ranging from hundreds of millions to billions of vectors.
 
-**Description:** HVI keeps vector data on SSD while the navigation graph lives in RAM. This separation allows billion-scale search without proportionally large RAM. Optimized for high recall with a low memory footprint (Data Greatness in Memory - DGM ratio of 2%).
+**Description:** HVI separates routing (HNSW in RAM) from search (Vamana on SSD). This two-layer design enables billion-scale search without proportionally large RAM. The HNSW centroid graph keeps query routing fast; the on-disk Vamana graph enables accurate local search within the target clusters with minimal memory overhead.
 
 **Performance Nuance:** Because vector fetching requires SSD I/O, HVI has a slightly higher latency floor than purely in-memory indexes. However, latency remains stable as the dataset grows and does not degrade with scale the way memory-mapped approaches do.
 

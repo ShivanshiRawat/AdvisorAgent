@@ -1,8 +1,5 @@
-beautifulsoup4>=4.12.0
 couchbase>=4.0.0
 chainlit>=2.0.0
-ddgs>=0.1.0
-duckduckgo-search>=6.0.0
 google-genai>=1.0.0
 httpx>=0.25.0
 openai>=1.0.0
