@@ -23,7 +23,7 @@
                 "Use cases prioritizing high accuracy with low latency at massive scale with mid-high filtering"
             ],
             "limitations": [
-                "not optimized for high selectivity filtering",
+                "not optimized for <20% selective filters (where only a small fraction of the corpus is eligible for vector search)",
                 "SSD IO introduces baseline latency"
             ]
         },
@@ -33,7 +33,7 @@
                 "engine": "Standard Plasma",
                 "requirement": "Full index must reside in RAM to avoid severe latency degradation"
             },
-            "primary_signal": "Structured workloads with high selectivity constraints (e.g., category, brand, user permissions) before the vector search",
+            "primary_signal": "Structured workloads where filters are narrowly scoped — typically <20% selective, meaning a small fraction of the corpus is eligible for vector search before the ANN step",
             "description": "CVI combines a traditional GSI for structured field filtering with the vector similarity component. It uses 'Filter-First' logic, where metadata conditions are applied at the index level before the vector search runs, dramatically reducing the search space for the ANN step.",
             "performance_nuance": {
                 "memory_intensive": true,
@@ -46,7 +46,7 @@
             ],
             "limitations": [
                 "Not viable at billion-scale without proportionally large RAM budgets",
-                "Poor fit when filters have low selectivity (does not meaningfully reduce search space)"
+                "Poor fit when filter is >20% selective — a large fraction of the corpus remains eligible for vector search, so the pre-filter doesn't meaningfully shrink the ANN search space"
             ]
         },
         "Search Vector Index": {

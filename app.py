@@ -374,4 +374,10 @@ async def _show_recommendation(payload: Dict[str, Any]):
         if arch.get("operational_notes"):
             parts.append(f"- **Operational notes:** {arch['operational_notes']}")
 
+    next_steps = payload.get("next_steps", [])
+    if next_steps:
+        parts.append("\n---\n### 💡 What I can help with next")
+        for i, step in enumerate(next_steps, 1):
+            parts.append(f"{i}. {step}")
+
     await cl.Message(content="\n".join(parts)).send()

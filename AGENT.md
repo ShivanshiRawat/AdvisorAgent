@@ -28,7 +28,7 @@
 - Use cases prioritizing high accuracy with low latency at massive scale.
 
 **Limitations:**
-- Not optimized for extremely high-selectivity metadata pre-filtering compared to Composite.
+- Not optimized for <20% selective filters compared to Composite (where only a small fraction of the corpus is eligible for vector search).
 - Slightly higher baseline latency floor due to SSD I/O bound nature.
 
 ---
@@ -39,20 +39,20 @@
 
 **Storage Model:** Standard Plasma engine; requires its full index to reside in RAM to avoid severe latency degradation.
 
-**Primary Signal:** Structured workloads with high selectivity constraints (e.g., category, brand, user permissions) before the vector search.
+**Primary Signal:** Structured workloads where filters are narrowly scoped — meaning a small percentage of the corpus (typically <20% selective) is eligible for vector search before the ANN step.
 
 **Description:** CVI combines a traditional GSI for structured field filtering with the vector similarity component. It uses "Filter-First" logic, where metadata conditions are applied at the index level before the vector search runs, dramatically reducing the search space for the ANN step.
 
 **Performance Nuance:** CVI is memory-intensive. The entire index should reside in RAM to maintain performance. At massive scale, RAM costs become the primary limiting factor.
 
 **Best For:**
-- Workloads with complex, multi-layered filters (e.g., location, price, amenities) that narrow results to a small subset (<20%).
+- Workloads where filters narrow the eligible corpus to <20% selective (e.g., only 5% of data passes the category + tenant filter, and 95% is filtered out).
 - Multi-tenant architectures with strong per-tenant isolation (e.g., filtering by customer_id or kb_id).
 - Search scenarios where customers already run regular SQL queries and need seamless integration.
 
 **Limitations:**
 - Not viable at billion-scale without proportionally large RAM budgets.
-- Poor fit when filters have low selectivity (does not meaningfully reduce search space).
+- Poor fit when the filter is >20% selective (a large fraction of the corpus remains, so the pre-filter doesn't meaningfully shrink the ANN search space).
 
 ---
 
@@ -126,9 +126,11 @@ Never assume current document counts are static.
 
 ## Pivot 2: Filter Selectivity Logic
 
-**HIGH Selectivity (< 20% data remains):** Recommend Composite. If structured filters (e.g., WHERE tenant_id = 'X') eliminate 80%+ of data, pre-filtering avoids millions of unnecessary vector comparisons.
+**Definition:** x% selective means x% of the corpus is eligible for vector search; the remaining (100 - x)% is filtered out before ANN runs.
 
-**LOW Selectivity (> 20% data remains):** Recommend Hyperscale. When filters are weak, HVI's simultaneous graph traversal is more efficient than scanning a large, barely-reduced filtered index.
+**<20% selective (small eligible pool):** Recommend Composite. If structured filters (e.g., WHERE tenant_id = 'X') allow only <20% of data through, pre-filtering avoids unnecessary vector comparisons across the rest of the corpus.
+
+**≥20% selective (large eligible pool):** Recommend Hyperscale. When a large fraction of the corpus is eligible for vector search, HVI's simultaneous graph traversal is more efficient than scanning a large barely-reduced filtered index.
 
 ---
 
@@ -278,8 +280,8 @@ Vector index tuning involves balancing three primary objectives: **recall, speed
 2. **Temporal Volume:**  
    "You have X vectors now; based on your roadmap, where will this volume be in 3 years?"
 
-3. **Selectivity Pressure:**  
-   "When you apply filters (like Category or Tenant ID), does that narrow the pool to under 20% of data, or are you searching broadly?"
+3. **Selectivity Pressure:**
+   "When you apply filters (like Category or Tenant ID), what percentage of your total data remains eligible for vector search? For example, if you filter by a single tenant, what fraction of all documents belong to that tenant?"
 
 4. **Lexical Requirement:**  
    "Do you need typos handling and fuzzy keyword matching, or is this purely semantic 'concepts-only' search?"

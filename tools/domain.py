@@ -155,14 +155,16 @@ def compare_indexes(
     if has_hard_filter and filter_selectivity_pct is not None:
         if filter_selectivity_pct < 20:
             analysis["analysis"]["filter_verdict"] = (
-                f"Filter prunes to {filter_selectivity_pct}% of corpus — highly selective. "
+                f"Filter is {filter_selectivity_pct}% selective — only {filter_selectivity_pct}% of the corpus "
+                f"is eligible for vector search, with the remaining {100 - filter_selectivity_pct:.0f}% filtered out. "
                 f"Composite physically benefits: GSI reduces ANN scope by {100 - filter_selectivity_pct:.0f}%. "
                 f"BUT: verify the full index fits in RAM before committing."
             )
         else:
             analysis["analysis"]["filter_verdict"] = (
-                f"Filter retains {filter_selectivity_pct}% of corpus — low selectivity. "
-                f"Composite's GSI scan cost is not justified by the ANN reduction."
+                f"Filter is {filter_selectivity_pct}% selective — {filter_selectivity_pct}% of the corpus "
+                f"is eligible for vector search, with the remaining {100 - filter_selectivity_pct:.0f}% filtered out. "
+                f"Composite's GSI pre-filter provides minimal reduction at this selectivity, wasting RAM for little gain."
             )
     elif not has_hard_filter:
         analysis["analysis"]["filter_verdict"] = (
@@ -203,3 +205,143 @@ def use_case_search(
         "scale_change":       scale_change,
     }
     return find_similar_cases(user_signals, _USE_CASES_PATH, top_n=3)
+
+
+def get_index_queries(index_type: str) -> dict:
+    """Return DDL (CREATE INDEX) and DML (SELECT) query templates for the given index type.
+
+    Templates use <placeholder> notation for fields the user must substitute.
+    The LLM should present these queries and offer to personalise them once the
+    user shares their data model (bucket / scope / collection names, field names,
+    vector dimensions, and similarity metric).
+
+    Supported index_type values: "HVI", "CVI", "FTS", "Hybrid"
+    """
+    index_type = index_type.strip().upper()
+
+    if index_type == "HVI":
+        return {
+            "index_type": "Hyperscale Vector Index (HVI)",
+            "ddl": """\
+CREATE VECTOR INDEX `index_name` 
+ON `bucket`.`scope`.`collection`(`vector_field` VECTOR)
+-- Optional: Fields to be co-located in the index for covering queries
+INCLUDE (`scalar_field_1`, `scalar_field_2`, `metadata_field`)
+-- Optional: Partitioning for high-scale distribution
+PARTITION BY HASH(meta().id) 
+WITH {
+  "dimension": <integer_dimensions>,
+  "similarity": "<COSINE | DOT | L2 | L2_SQUARED>",
+  "description": "<IVF_centroids,SQ_bits | IVF_centroids,PQ_subquantizers>",
+  "train_list": <integer_sample_size>,
+  "persist_full_vector": <true | false>,
+  "scan_nprobes": <integer_cells_to_scan>,
+  "num_replica": <integer_replicas>,
+  "defer_build": <true | false>
+};""",
+            "dml": """\
+SELECT 
+    `scalar_field_1`, 
+    `metadata_field`,
+    APPROX_VECTOR_DISTANCE(`vector_field`, <search_vector>, "<similarity_metric>") AS score
+FROM `bucket`.`scope`.`collection`
+WHERE `scalar_field_1` = <filter_value> -- Only if field is in INCLUDE
+ORDER BY APPROX_VECTOR_DISTANCE(`vector_field`, <search_vector>, "<similarity_metric>")
+LIMIT <top_k>;""",
+            "notes": (
+                "HVI is disk-centric (DiskANN/Vamana). The PARTITION BY clause is optional "
+                "but recommended for horizontal scaling across nodes. "
+                "Set persist_full_vector=true only if you want reranking (improves recall at latency cost). "
+                "nprobes controls the recall/latency trade-off at query time — higher = better recall, more latency."
+            ),
+        }
+
+    elif index_type == "CVI":
+        return {
+            "index_type": "Composite Vector Index (CVI)",
+            "ddl": """\
+CREATE INDEX `<index_name>`
+ON `<bucket>`.`<scope>`.`<collection>`(
+    `<scalar_field_1>`,           -- leading filter field (most selective first)
+    `<scalar_field_2>`,           -- additional filter fields as needed
+    `<vector_field>` VECTOR
+)
+-- Optional: partition on the most selective scalar field
+PARTITION BY HASH(`<scalar_field_1>`)
+WITH {
+  "dimension":   <integer — must match your embedding model output, e.g. 1536>,
+  "similarity":  "<COSINE | DOT | L2 | L2_SQUARED>",
+  "description": "<IVF_<centroids>,SQ8>",
+  "train_list":  <integer — sample size for quantisation training, e.g. 100000>,
+  "num_replica": <integer — index replicas for HA, e.g. 1>,
+  "defer_build": <true | false>
+};""",
+            "dml": """\
+SELECT
+    meta().id,
+    `<returned_scalar_fields>`,
+    APPROX_VECTOR_DISTANCE(
+        `<vector_field>`,
+        <search_vector_array>,
+        "<COSINE | DOT | L2 | L2_SQUARED>"
+    ) AS distance
+FROM `<bucket>`.`<scope>`.`<collection>`
+WHERE `<scalar_field_1>` = <value>
+  AND `<scalar_field_2>` > <value>   -- match the leading index key order
+ORDER BY APPROX_VECTOR_DISTANCE(
+    `<vector_field>`,
+    <search_vector_array>,
+    "<COSINE | DOT | L2 | L2_SQUARED>"
+)
+LIMIT <top_k>;""",
+            "notes": (
+                "CVI uses GSI Filter-First logic: scalar WHERE conditions are applied at the index "
+                "level before the ANN step. For maximum benefit the filter must be <20% selective "
+                "(i.e., less than 20% of the corpus is eligible for vector search). "
+                "Order scalar fields in the CREATE INDEX key list with the most selective field first. "
+                "The full index must fit in RAM — monitor memory usage as the corpus grows."
+            ),
+        }
+
+    elif index_type == "FTS":
+        return {
+            "index_type": "Search Vector Index (FTS)",
+            "ddl": (
+                "Search Vector Indexes are created via the Couchbase UI (Search Service → Create Index) "
+                "or the REST API — not via SQL++. Key settings to configure in the UI:\n"
+                "  • Index name\n"
+                "  • Bucket / Scope / Collection\n"
+                "  • Vector field name and dimension\n"
+                "  • Similarity metric (COSINE | DOT | L2)\n"
+                "  • Optimized For: latency | recall | memory-efficient\n"
+                "  • Scoring Model: BM25 (recommended) | TF-IDF\n"
+                "  • Number of replicas"
+            ),
+            "dml": """\
+-- Hybrid keyword + vector search via FTS
+SELECT meta().id, `<scalar_fields>`, score() AS relevance_score
+FROM `<bucket>`.`<scope>`.`<collection>`
+WHERE SEARCH(`<collection>`, {
+    "query": {
+        "match": "<keyword_query_string>",
+        "field":  "<text_field>"
+    },
+    "knn": [{
+        "field":  "<vector_field>",
+        "vector": <search_vector_array>,
+        "k":      <top_k>
+    }]
+})
+LIMIT <top_k>;""",
+            "notes": (
+                "FTS Search Vector Index is strictly limited to ~100M vectors due to memory-mapping. "
+                "Use the SEARCH() function in SQL++ to issue hybrid (keyword + vector) queries. "
+                "For pure vector search without keyword scoring, the APPROX_VECTOR_DISTANCE "
+                "on a standard index is more efficient."
+            ),
+        }
+
+    else:
+        return {
+            "error": f"Unknown index_type '{index_type}'. Valid values: HVI, CVI, FTS."
+        }

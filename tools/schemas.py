@@ -230,6 +230,42 @@ ALL_TOOL_SCHEMAS = [
     {
         "type": "function",
         "function": {
+            "name": "get_index_queries",
+            "description": (
+                "Returns the DDL (CREATE INDEX) and DML (SELECT) query templates for a single "
+                "Couchbase vector index component. "
+                "Call this after giving a recommendation so the user has concrete SQL++ to adapt. "
+                "For Hybrid architectures (HVI+FTS or CVI+FTS), call this tool TWICE — once per "
+                "component — then instruct the user to run both queries independently and merge the "
+                "results at the application layer using a fusion strategy (e.g. Reciprocal Rank Fusion). "
+                "After presenting the templates, offer to substitute the user's actual bucket, "
+                "scope, collection, field names, dimensions, and similarity metric. "
+                "If the user cannot share their data model, present the general templates as-is."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "index_type": {
+                        "type": "string",
+                        "enum": ["HVI", "CVI", "FTS"],
+                        "description": (
+                            "The index component to fetch query templates for. "
+                            "HVI = Hyperscale Vector Index (disk-centric, billion-scale ANN). "
+                            "CVI = Composite Vector Index (GSI filter-first, <20% selective workloads). "
+                            "FTS = Search Vector Index (keyword + vector, <100M scale). "
+                            "For Hybrid architectures, call this tool once with 'HVI' (or 'CVI') "
+                            "and once with 'FTS', then present both sets of queries and explain "
+                            "that the results must be merged at the application layer."
+                        ),
+                    },
+                },
+                "required": ["index_type"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "ask_user",
             "description": (
                 "TERMINAL TOOL. Ask clarifying questions when critical information is missing. "
@@ -333,6 +369,18 @@ ALL_TOOL_SCHEMAS = [
                             "shared_indexes": {"type": "string"},
                             "operational_notes": {"type": "string"},
                         },
+                    },
+                    "next_steps": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": (
+                            "Short list of concrete things you can help the user with next. "
+                            "Always include at least: generating the CREATE INDEX and SELECT queries "
+                            "for the recommended index, and answering follow-up questions about the "
+                            "recommendation. Add other relevant options based on context "
+                            "(e.g. tuning parameters, migration path, explaining eliminated alternatives). "
+                            "Keep each item to one short sentence — this is displayed as a menu."
+                        ),
                     },
                 },
                 "required": ["summary", "query_pattern_recommendations", "architecture_summary"],

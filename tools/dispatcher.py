@@ -13,7 +13,7 @@ import re
 from typing import Any, Optional
 
 from tools.reasoning import think, plan, update_state
-from tools.domain import web_search, evaluate_index_viability, compare_indexes, use_case_search
+from tools.domain import web_search, evaluate_index_viability, compare_indexes, use_case_search, get_index_queries
 
 logger = logging.getLogger(__name__)
 
@@ -92,6 +92,11 @@ def execute_tool(
                 has_hard_filter=bool(args.get("has_hard_filter", False)),
                 filter_selectivity_pct=args.get("filter_selectivity_pct"),
                 latency_target_ms=args.get("latency_target_ms"),
+            )
+
+        elif tool_name == "get_index_queries":
+            return get_index_queries(
+                index_type=args.get("index_type", "HVI"),
             )
 
         else:

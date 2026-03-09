@@ -113,8 +113,8 @@
                 "Pre-filtering reduces search space to less than 20%",
                 "Massive product corpus"
             ],
-            "growth_note": "Composite can handle billion scale here effectively due to high selectivity",
-            "why_chosen": "Composite can handle billion scale here effectively due to high selectivity. Pre-filtering reduces the search space across the ecommerce catalogs.",
+            "growth_note": "Composite can handle billion scale here effectively because the filter is only 10% selective, meaning 90% of the corpus is eliminated before ANN runs.",
+            "why_chosen": "Composite benefits directly from a 10% selective filter — the GSI pre-filter eliminates 90% of the ecommerce catalog before the ANN step, dramatically shrinking the search space.",
             "why_not": {
                 "HVI": "Does not work better than composite when filters reduce the search space to less than 20% of the data",
                 "FTS_Vector_Search": "FTS_Vector_Search alone cannot deliver high-quality semantic similarity ranking.",
@@ -205,7 +205,7 @@
             ],
             "why_chosen": "HVI is optimized for hyperscale ANN workloads, supporting billion-plus vectors with strict low-latency guarantees under low-selectivity filtering.",
             "why_not": {
-                "CVI": "Composite index cannot efficiently handle billion-scale vectors due to RAM constraints at such low selectivity.",
+                "CVI": "Composite index cannot efficiently handle billion-scale vectors with a 70% selective filter — when 70% of the corpus is eligible for vector search, the GSI pre-filter barely reduces the ANN search space, wasting RAM for little gain.",
                 "FTS_Vector_Search": "Full-text search lacks ANN efficiency and cannot sustain sub-20ms tail latency for billions of vectors.",
                 "Hybrid": "Hybrid adds unnecessary keyword ranking overhead, while the dominant workload is pure vector similarity with low-selectivity filters."
             },
@@ -268,7 +268,7 @@
         },
         {
             "pattern_id": "UC-005-QP1",
-            "short_description": "Complex real estate search with multi-layered, highly selective filters on location, price, amenities, and property type over 40M listings.",
+            "short_description": "Complex real estate search with multi-layered filters on location, price, amenities, and property type, where the filter is approximately 8% selective (only 8% of listings are eligible for vector search) over 40M listings.",
             "signals": {
                 "search_type": "filtered_vector",
                 "filter_selectivity": 0.08,
@@ -293,7 +293,7 @@
             ],
             "why_chosen": "CVI supports advanced, high-selectivity filters efficiently while maintaining predictable latency for real-time search over moderate-scale datasets.",
             "why_not": {
-                "HVI": "Hyperscale index is overkill for moderate-scale workload with highly selective filtering.",
+                "HVI": "HVI is overkill for a moderate-scale workload where the filter is already 8% selective — CVI's pre-filter eliminates 92% of the corpus before ANN, which is exactly the scenario CVI is optimized for.",
                 "FTS_Vector_Search": "Full-text search cannot efficiently handle complex, multi-dimensional vector filters.",
                 "Hybrid": "Hybrid adds unnecessary complexity; CVI alone satisfies high-selectivity filtering needs."
             },
