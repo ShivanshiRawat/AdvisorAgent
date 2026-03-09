@@ -1,0 +1,491 @@
+{
+    "use_cases": [
+        {
+            "pattern_id": "UC-001-QP1",
+            "short_description": "High-frequency semantic product search using query embeddings with structured filters (category, price, availability) under strict latency SLAs at very large scale.",
+            "signals": {
+                "search_type": "filtered_hybrid",
+                "filter_selectivity": 0.8,
+                "scale_category": "massive",
+                "keyword_required": true,
+                "latency_ms": 80,
+                "scale_change": false
+            },
+            "scale": {
+                "current_scale": "300M",
+                "growth_rate": "fast",
+                "projected_scale": "billion_plus"
+            },
+            "recommended_index": "Hybrid",
+            "binding_constraint": "massive_scale",
+            "decision_factors": [
+                "Projected growth toward billion-plus representations",
+                "High concurrency with strict p95/p99 latency requirements",
+                "Vector similarity combined with structured filters",
+                "Potential need for keyword + semantic fusion"
+            ],
+            "growth_note": "Projected billion-scale growth and rising concurrency make hyperscale vector architecture mandatory to avoid future migration complexity.",
+            "why_chosen": "Hybrid index enables hyperscale ANN performance with structured and keyword filtering under strict latency constraints.",
+            "why_not": {
+                "HVI": "Does not natively handle advanced keyword scoring and hybrid ranking requirements at ecommerce scale.",
+                "CVI": "Not enough selectivity and does not support keyword search",
+                "FTS_Vector_Search": "Does not support vector search at billion scale"
+            },
+            "signature_vector": [
+                0.0,
+                0.0,
+                0.0,
+                1.0,
+                0.8,
+                0.0,
+                1.0,
+                0.0,
+                0.08,
+                0.0
+            ]
+        },
+        {
+            "pattern_id": "UC-001-QP2",
+            "short_description": "User-personalized recommendation retrieval using stored user embeddings to perform vector similarity search against product embeddings with business filters.",
+            "signals": {
+                "search_type": "filtered_vector",
+                "filter_selectivity": 0.7,
+                "scale_category": "massive",
+                "keyword_required": false,
+                "latency_ms": 100,
+                "scale_change": false
+            },
+            "scale": {
+                "current_scale": "300M",
+                "growth_rate": "fast",
+                "projected_scale": "billion_plus"
+            },
+            "recommended_index": "HVI",
+            "binding_constraint": "massive_scale",
+            "decision_factors": [
+                "300M+ product vector corpus",
+                "Vector only search needed at that scale",
+                "Strict tail-latency requirements under high concurrency",
+                "ANN-first retrieval with lightweight business filters",
+                "Large candidate retrieval (top-k up to 200)"
+            ],
+            "growth_note": "As recommendation traffic and corpus size grow toward billion-scale, hyperscale ANN architecture ensures predictable latency.",
+            "why_chosen": "Hyperscale Vector Index provides optimal ANN performance and scalability for pure vector recommendation workloads.",
+            "why_not": {
+                "CVI": "No filtration needed",
+                "FTS_Vector_Search": "FTS_Vector_Search does not perform well at 300M scale",
+                "Hybrid": "We do not need keyword search and hybrid adds keyword overhead that is unnecessary for pure embedding-driven recommendations."
+            },
+            "signature_vector": [
+                0.0,
+                1.0,
+                0.0,
+                0.0,
+                0.7,
+                0.0,
+                1.0,
+                0.0,
+                0.1,
+                0.0
+            ]
+        },
+        {
+            "pattern_id": "UC-001-QP3",
+            "short_description": "Category-first navigation with structured attribute filters and optional semantic refinement within a constrained product subset.",
+            "signals": {
+                "search_type": "filtered_vector",
+                "filter_selectivity": 0.1,
+                "scale_category": "massive",
+                "keyword_required": false,
+                "latency_ms": 90,
+                "scale_change": false
+            },
+            "scale": {
+                "current_scale": "300M",
+                "growth_rate": "fast",
+                "projected_scale_category": "billion_plus"
+            },
+            "recommended_index": "CVI",
+            "binding_constraint": "high_selectivity_filter",
+            "decision_factors": [
+                "High-selectivity category and attribute filters",
+                "Structured browsing combined with semantic refinement",
+                "Pre-filtering reduces search space to less than 20%",
+                "Massive product corpus"
+            ],
+            "growth_note": "Composite can handle billion scale here effectively because the filter is only 10% selective, meaning 90% of the corpus is eliminated before ANN runs.",
+            "why_chosen": "Composite benefits directly from a 10% selective filter — the GSI pre-filter eliminates 90% of the ecommerce catalog before the ANN step, dramatically shrinking the search space.",
+            "why_not": {
+                "HVI": "Does not work better than composite when filters reduce the search space to less than 20% of the data",
+                "FTS_Vector_Search": "FTS_Vector_Search alone cannot deliver high-quality semantic similarity ranking.",
+                "Hybrid": "Hybrid adds keyword overhead that is not needed for pure embedding-driven recommendations."
+            },
+            "signature_vector": [
+                0.0,
+                1.0,
+                0.0,
+                0.0,
+                0.1,
+                0.0,
+                1.0,
+                0.0,
+                0.09,
+                0.0
+            ]
+        },
+        {
+            "pattern_id": "UC-002-QP1",
+            "short_description": "Real-time personalized content retrieval where a user/session embedding is used to retrieve top-k most similar content vectors from a massive and rapidly growing corpus under strict tail-latency constraints. Uses filters like Content freshness, language or reginon, safety and policy constraints.",
+            "signals": {
+                "search_type": "filtered_vector",
+                "filter_selectivity": 0.7,
+                "scale_category": "massive",
+                "keyword_required": false,
+                "latency_ms": 100,
+                "scale_change": false
+            },
+            "scale": {
+                "current_scale": "150M-300M",
+                "growth_rate": "fast",
+                "projected_scale": "billion_plus"
+            },
+            "recommended_index": "HVI",
+            "binding_constraint": "billion_scale",
+            "decision_factors": [
+                "Initial deployment already at 150-300M content vectors with projection beyond 1B within 24-36 months",
+                "Hundreds of thousands of vector queries per second with very high concurrency",
+                "Strict p95 (<100ms) and tightly bounded p99 latency requirements",
+                "Vector similarity is first-stage retrieval over very large candidate pool",
+                "Filters (freshness, language, safety) are low-to-medium selectivity and do not drastically shrink ANN search space",
+                "Frequent user vector updates and continuous content ingestion"
+            ],
+            "why_chosen": "HVI is purpose-built for hyperscale ANN workloads with billion-scale growth, high QPS, and strict tail-latency guarantees.",
+            "why_not": {
+                "CVI": "CVI performs really bad at that low level of selectivity when compared to hybrid",
+                "FTS_Vector_Search": "FTS_Vector_Search cannot sustain billion-scale ANN workloads with predictable latency under extreme QPS.",
+                "Hybrid": "Hybrid adds unnecessary keyword infrastructure overhead that is not needed since the dominant retrieval pattern is pure embedding similarity with lightweight filters."
+            },
+            "signature_vector": [
+                0.0,
+                1.0,
+                0.0,
+                0.0,
+                0.7,
+                0.0,
+                1.0,
+                0.0,
+                0.1,
+                0.0
+            ]
+        },
+        {
+            "pattern_id": "UC-003-QP1",
+            "short_description": "Real-time AI-driven job search and recommendation engine for billions of job vectors (similar to LinkedIN), supporting low-selectivity filters and instant personalized alerts.",
+            "signals": {
+                "search_type": "filtered_vector",
+                "filter_selectivity": 0.7,
+                "scale_category": "billion_plus",
+                "keyword_required": false,
+                "latency_ms": 20,
+                "scale_change": false
+            },
+            "scale": {
+                "current_scale": "1B+",
+                "growth_rate": "fast",
+                "projected_scale": "billion_plus"
+            },
+            "recommended_index": "HVI",
+            "binding_constraint": "billion_scale",
+            "decision_factors": [
+                "Dataset exceeds 1 billion job vectors and continues to grow rapidly",
+                "Low-selectivity filters (role, location, salary) eliminate only a small portion of vectors",
+                "Strict latency requirements for personalized recommendations and instant job alerts",
+                "Continuous ingestion of new job postings and frequent updates to job embeddings",
+                "High uptime and reliability requirements for mission-critical search"
+            ],
+            "why_chosen": "HVI is optimized for hyperscale ANN workloads, supporting billion-plus vectors with strict low-latency guarantees under low-selectivity filtering.",
+            "why_not": {
+                "CVI": "Composite index cannot efficiently handle billion-scale vectors with a 70% selective filter — when 70% of the corpus is eligible for vector search, the GSI pre-filter barely reduces the ANN search space, wasting RAM for little gain.",
+                "FTS_Vector_Search": "Full-text search lacks ANN efficiency and cannot sustain sub-20ms tail latency for billions of vectors.",
+                "Hybrid": "Hybrid adds unnecessary keyword ranking overhead, while the dominant workload is pure vector similarity with low-selectivity filters."
+            },
+            "signature_vector": [
+                0.0,
+                1.0,
+                0.0,
+                0.0,
+                0.7,
+                0.0,
+                0.0,
+                1.0,
+                0.02,
+                0.0
+            ]
+        },
+        {
+            "pattern_id": "UC-004-QP1",
+            "short_description": "Hybrid product search for a D2C ecommerce platform, combining text and vector search to handle natural language queries, typos, and autocomplete for eco-friendly products.",
+            "signals": {
+                "search_type": "hybrid_keyword_vector",
+                "filter_selectivity": 0.4,
+                "scale_category": "medium",
+                "keyword_required": true,
+                "latency_ms": 200,
+                "scale_change": false
+            },
+            "scale": {
+                "current_scale": "1M-50M",
+                "growth_rate": "moderate",
+                "projected_scale": "50M-100M"
+            },
+            "recommended_index": "FTS_Vector_Search",
+            "binding_constraint": "keyword_requirement",
+            "decision_factors": [
+                "Hybrid search combining text and vector similarity to handle natural language queries",
+                "Autocomplete and fuzzy matching to support typos and improve discovery",
+                "Moderate scale (~30 QPS) where performance is secondary to relevance",
+                "Filters (category, product attributes) are manageable and well supported by FTS_Vector_Search",
+                "Vector similarity is used as a secondary signal for semantic relevance"
+            ],
+            "why_chosen": "FTS_Vector_Search provides native support for hybrid text + vector search, autocomplete, and fuzzy matching at moderate scale with filtered search.",
+            "why_not": {
+                "HVI": "Overkill for moderate-scale workload and adds unnecessary complexity for text search features.",
+                "CVI": "Does not natively support hybrid text + vector retrieval or fuzzy matching.",
+                "Hybrid": "Hybrid index is unnecessary given the low QPS and manageable dataset scale; FTS_Vector_Search suffices."
+            },
+            "signature_vector": [
+                0.0,
+                0.0,
+                1.0,
+                0.0,
+                0.4,
+                1.0,
+                0.0,
+                0.0,
+                0.2,
+                0.0
+            ]
+        },
+        {
+            "pattern_id": "UC-005-QP1",
+            "short_description": "Complex real estate search with multi-layered filters on location, price, amenities, and property type, where the filter is approximately 8% selective (only 8% of listings are eligible for vector search) over 40M listings.",
+            "signals": {
+                "search_type": "filtered_vector",
+                "filter_selectivity": 0.08,
+                "scale_category": "medium",
+                "keyword_required": false,
+                "latency_ms": 150,
+                "scale_change": false
+            },
+            "scale": {
+                "current_scale": "40M",
+                "growth_rate": "moderate(50-200%/yr)",
+                "projected_scale": "large(50M-100M)"
+            },
+            "recommended_index": "CVI",
+            "binding_constraint": "high_selectivity_filter",
+            "decision_factors": [
+                "Highly selective filters across multiple dimensions (location, price, amenities, property type)",
+                "Integration with existing SQL-based workflows in Couchbase",
+                "Moderate scale (40M listings) with peak 200 QPS",
+                "Performance and relevance prioritized over pure ANN throughput",
+                "Filters dramatically reduce the candidate search space"
+            ],
+            "why_chosen": "CVI supports advanced, high-selectivity filters efficiently while maintaining predictable latency for real-time search over moderate-scale datasets.",
+            "why_not": {
+                "HVI": "HVI is overkill for a moderate-scale workload where the filter is already 8% selective — CVI's pre-filter eliminates 92% of the corpus before ANN, which is exactly the scenario CVI is optimized for.",
+                "FTS_Vector_Search": "Full-text search cannot efficiently handle complex, multi-dimensional vector filters.",
+                "Hybrid": "Hybrid adds unnecessary complexity; CVI alone satisfies high-selectivity filtering needs."
+            },
+            "signature_vector": [
+                0.0,
+                1.0,
+                0.0,
+                0.0,
+                0.08,
+                1.0,
+                0.0,
+                0.0,
+                0.15,
+                0.0
+            ]
+        },
+        {
+            "pattern_id": "UC-006-QP1",
+            "short_description": "Strictly isolated semantic search for enterprise documents in a multi-tenant SaaS platform.",
+            "signals": {
+                "search_type": "filtered_vector",
+                "filter_selectivity": 0.1,
+                "scale_category": "massive",
+                "keyword_required": false,
+                "latency_ms": 150,
+                "scale_change": false
+            },
+            "scale": {
+                "current_scale": "100M-1B",
+                "growth_rate": "explosive",
+                "projected_scale": "billion_plus"
+            },
+            "recommended_index": "CVI",
+            "binding_constraint": "high_selectivity_filter",
+            "decision_factors": [
+                "Tenant isolation requires extremely selective pre-filtering per query",
+                "Query volume is high but each tenant only touches a small subset of vectors",
+                "Total corpus is massive with projections to exceed 1B vectors",
+                "Strict tail-latency requirements (<20ms) for enterprise SLA compliance",
+                "Frequent updates across tenants necessitate efficient, selective vector indexing"
+            ],
+            "why_chosen": "CVI provides the necessary pre-filtering to ensure recall stability and performance at 0.01% selectivity.",
+            "why_not": {
+                "HVI": "Low selectivity causes HVI to probe too many centroids, leading to worse latency.",
+                "FTS_Vector_Search": "Search Vector Service would breach its limit and consume excessive RAM leading to high latency.",
+                "Hybrid": "Over-engineered for a requirement focused purely on tenant-filtered vector similarity."
+            },
+            "signature_vector": [
+                0.0,
+                1.0,
+                0.0,
+                0.0,
+                0.1,
+                0.0,
+                1.0,
+                0.0,
+                0.15,
+                0.0
+            ]
+        },
+        {
+            "pattern_id": "UC-007-QP1",
+            "short_description": "Hybrid search for a national identity system requiring both keyword and vector similarity search over 4B records, supporting fast, accurate retrieval and filtering.",
+            "signals": {
+                "search_type": "filtered_hybrid",
+                "filter_selectivity": 0.7,
+                "scale_category": "billion_plus",
+                "keyword_required": true,
+                "latency_ms": 180,
+                "scale_change": false
+            },
+            "scale": {
+                "current_scale": ">1B",
+                "growth_rate": "moderate",
+                "projected_scale": "billion_plus"
+            },
+            "recommended_index": "Hybrid",
+            "binding_constraint": "billion_scale",
+            "decision_factors": [
+                "Dataset contains 4B identity records requiring high-scale vector search",
+                "Requires hybrid queries combining keyword search (names, addresses, IDs) with semantic vector search (biometric embeddings, document embeddings)",
+                "Low-selectivity filters (region, age, enrollment center) do not drastically reduce search space",
+                "Strict latency requirements for verification and retrieval of identity records",
+                "Frequent updates for new enrollments, corrections, and periodic re-embedding for biometric models"
+            ],
+            "why_chosen": "Hybrid index combines hyperscale ANN with keyword filtering to efficiently support billion-scale vector + text search under strict latency requirements.",
+            "why_not": {
+                "HVI": "HVI alone cannot efficiently support keyword-based search and filtering across 4B records.",
+                "CVI": "CVI is unsuitable at this scale and low filter selectivity; RAM cost would be prohibitive.",
+                "FTS_Vector_Search": "FTS cannot deliver billion-scale vector similarity with strict latency requirements."
+            },
+            "signature_vector": [
+                0.0,
+                0.0,
+                0.0,
+                1.0,
+                0.7,
+                0.0,
+                0.0,
+                1.0,
+                0.18,
+                0.0
+            ]
+        },
+        {
+            "pattern_id": "UC-008-QP1",
+            "short_description": "Genetic profile matching for a small-scale cancer research dataset.",
+            "signals": {
+                "search_type": "pure_vector",
+                "filter_selectivity": 1.0,
+                "scale_category": "small",
+                "keyword_required": false,
+                "latency_ms": 1000,
+                "scale_change": false
+            },
+            "scale": {
+                "current_scale": "<1M",
+                "growth_rate": "stable(<10%/yr)",
+                "projected_scale": "<1M"
+            },
+            "recommended_index": "FTS_Vector_Search",
+            "binding_constraint": "small_scale_simplicity",
+            "decision_factors": [
+                "Dataset is small (<1M vectors) and does not require scaling",
+                "No filtering or keywords are necessary",
+                "Query latency is flexible, allowing simple index structures",
+                "Minimal operational overhead is preferred for research workloads"
+            ],
+            "growth_note": "Stable growth ensures the exact matching approach will never hit a performance wall.",
+            "why_chosen": "FTS/Search Vector handles small datasets with minimal configuration overhead.",
+            "why_not": {
+                "HVI": "HVI is designed for approximate search; At this scale fts vector search is easier and manageable",
+                "CVI": "No scalar filters exist to justify the complexity of a Composite index at this small scale.",
+                "Hybrid": "Both HVI(optimized to handle billion scale) and Keyword search is not required for genetic sequence matching."
+            },
+            "signature_vector": [
+                1.0,
+                0.0,
+                0.0,
+                0.0,
+                1.0,
+                1.0,
+                0.0,
+                0.0,
+                1.0,
+                0.0
+            ]
+        },
+        {
+            "pattern_id": "UC-009-QP1",
+            "short_description": "Tenant-isolated semantic document search for a SaaS knowledge platform where every query is restricted to a specific tenant subset.",
+            "signals": {
+                "search_type": "filtered_vector",
+                "filter_selectivity": 0.05,
+                "scale_category": "large",
+                "keyword_required": false,
+                "latency_ms": 100,
+                "scale_change": true
+            },
+            "scale": {
+                "current_scale": "50M-100M",
+                "growth_rate": "moderate",
+                "projected_scale": "100M-1B"
+            },
+            "recommended_index": "CVI",
+            "binding_constraint": "high_selectivity_filter",
+            "decision_factors": [
+                "Each query is strictly scoped to one tenant (5K-50K docs per tenant out of 80M total)",
+                "Tenant filter eliminates well over 80% of global corpus before ANN search",
+                "Additional metadata filters (document type, access level) further reduce search space",
+                "Latency targets (p50 <40ms, p95 <100ms) require predictable filtered ANN performance",
+                "Top-k is small (10), favoring efficient pre-filtered candidate generation",
+                "Moderate update rate with continuous document ingestion"
+            ],
+            "why_chosen": "CVI benefits from extremely high tenant-level selectivity, dramatically shrinking the ANN search space and ensuring stable, predictable latency.",
+            "why_not": {
+                "HVI": "HVI is optimized for low-selectivity global ANN search and does not leverage strong tenant pre-filtering.",
+                "FTS": "FTS is not optimized for large-scale filtered vector workloads with strict tenant isolation.",
+                "Hybrid": "Hybrid adds unnecessary keyword search complexity when the dominant requirement is filtered semantic similarity."
+            },
+            "signature_vector": [
+                0.0,
+                1.0,
+                0.0,
+                0.0,
+                0.05,
+                0.0,
+                1.0,
+                0.0,
+                0.1,
+                1.0
+            ]
+        }
+    ]
+}
