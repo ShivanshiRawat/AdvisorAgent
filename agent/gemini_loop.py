@@ -145,6 +145,8 @@ def _run_gemini_turn(
 
     ephemeral_trace: List[Dict[str, Any]] = []
     MAX_LOOPS = 12
+    MAX_EXCEPTION_RETRIES = 2
+    exception_count = 0
     resp = None
 
     for loop_i in range(MAX_LOOPS):
@@ -154,26 +156,85 @@ def _run_gemini_turn(
 
             candidate = resp.candidates[0] if resp and resp.candidates else None
 
-            # --- Empty / blocked response handling ---
-            if not candidate or not candidate.content or not candidate.content.parts:
-                reason = getattr(candidate, "finish_reason", "UNKNOWN") if candidate else "NO_CANDIDATE"
-                logger.error(f"Empty API response on loop {loop_i}. Finish reason: {reason}. Retrying...")
+            # --- Empty / blocked / malformed response handling ---
+            # MALFORMED_FUNCTION_CALL can arrive with parts present but broken,
+            # so we must check finish_reason in addition to parts being empty.
+            finish_reason = (
+                str(getattr(candidate, "finish_reason", "")).upper()
+                if candidate else "NO_CANDIDATE"
+            )
+            is_bad = (
+                not candidate
+                or not candidate.content
+                or not candidate.content.parts
+                or "MALFORMED" in finish_reason
+                or "RECITATION" in finish_reason
+            )
 
+            if is_bad:
+                logger.error(
+                    f"Empty/malformed API response on loop {loop_i}. "
+                    f"Finish reason: {finish_reason}. Retrying with understanding state..."
+                )
+                # Build a concise recovery prompt using ONLY the structured
+                # understanding state — not raw history, not the full session.
+                understanding = session.get("state", {})
+                recovery_context = {
+                    "confirmed_facts": understanding.get("confirmed_facts", {}),
+                    "query_patterns": understanding.get("query_patterns", []),
+                    "reasoning_so_far": understanding.get("reasoning_so_far", ""),
+                    "open_gaps": understanding.get("open_gaps", []),
+                    "resolved_gaps": understanding.get("resolved_gaps", []),
+                }
+                recovery_prompt = (
+                    "Your previous response was empty or malformed.\n"
+                    "Here is the understanding you have built so far about the user's use case:\n\n"
+                    f"```json\n{json.dumps(recovery_context, indent=2, default=str)}\n```\n\n"
+                    "Based on this, immediately call:\n"
+                    "- `ask_user` if there are unresolved gaps you still need answered\n"
+                    "- `give_recommendation` if confirmed_facts are sufficient for a decision\n"
+                    "Do NOT respond with plain text. Use one of those two tools."
+                )
                 try:
-                    retry_resp = chat.send_message(
-                        "Your last response was empty. Based on the Understanding State you already have, "
-                        "immediately call give_recommendation or ask_user — whichever is appropriate. "
-                        "Do not produce an empty response."
+                    retry_resp = chat.send_message(recovery_prompt)
+                    retry_candidate = (
+                        retry_resp.candidates[0]
+                        if retry_resp and retry_resp.candidates
+                        else None
                     )
-                    retry_candidate = retry_resp.candidates[0] if retry_resp and retry_resp.candidates else None
-                    if retry_candidate and retry_candidate.content and retry_candidate.content.parts:
+                    retry_finish = (
+                        str(getattr(retry_candidate, "finish_reason", "")).upper()
+                        if retry_candidate else ""
+                    )
+                    retry_ok = (
+                        retry_candidate
+                        and retry_candidate.content
+                        and retry_candidate.content.parts
+                        and "MALFORMED" not in retry_finish
+                    )
+                    if retry_ok:
                         resp = retry_resp
                         continue
+                    logger.error(f"Retry also malformed/empty. Finish reason: {retry_finish}")
                 except Exception as retry_e:
-                    logger.error(f"Retry also failed: {retry_e}")
+                    logger.error(f"Retry send failed: {retry_e}")
 
+                # Final fallback — return reasoning so far with a friendly apology.
+                # The user should never see the raw error.
+                reasoning = understanding.get("reasoning_so_far", "").strip()
+                fallback_text = (
+                    "I'm sorry — the internal model is receiving too many simultaneous calls "
+                    "and wasn't able to complete its reasoning.\n\n"
+                )
+                if reasoning:
+                    fallback_text += f"**Here is my reasoning up to this point:**\n{reasoning}\n\n"
+                fallback_text += (
+                    "Please **reload the chat** to start. "
+                    "Sorry for the inconvenience."
+                )
+                session["history"].append({"role": "model", "content": fallback_text})
                 return (
-                    {"type": "error", "payload": {"message": "The AI service returned an empty response. Please try again."}},
+                    {"type": "text", "payload": {"message": fallback_text}},
                     ephemeral_trace,
                 )
 
@@ -184,11 +245,12 @@ def _run_gemini_turn(
             if not function_parts:
                 text = resp.text or ""
                 if not text.strip():
-                    logger.warning(f"Empty text response on loop {loop_i}.")
-                    return (
-                        {"type": "error", "payload": {"message": "The AI service returned an empty response. Please try again."}},
-                        ephemeral_trace,
+                    logger.warning(f"Empty text response on loop {loop_i}. Treating as loop continuation.")
+                    # Don't expose this — just skip and let the loop continue or hit MAX_LOOPS
+                    resp = chat.send_message(
+                        "Please call `ask_user` or `give_recommendation` now based on what you know."
                     )
+                    continue
                 session["history"].append({"role": "model", "content": text})
                 return (
                     {"type": "text", "payload": {"message": text}},
@@ -293,12 +355,71 @@ def _run_gemini_turn(
 
         except Exception as e:
             logger.error(f"Gemini loop error (iteration {loop_i}): {e}", exc_info=True)
+            exception_count += 1
+
+            if exception_count <= MAX_EXCEPTION_RETRIES:
+                logger.warning(
+                    f"Exception #{exception_count}. Retrying on same chat with understanding state "
+                    f"(attempt {exception_count}/{MAX_EXCEPTION_RETRIES})..."
+                )
+                understanding = session.get("state", {})
+                recovery_context = {
+                    "confirmed_facts":  understanding.get("confirmed_facts", {}),
+                    "query_patterns":   understanding.get("query_patterns", []),
+                    "reasoning_so_far": understanding.get("reasoning_so_far", ""),
+                    "open_gaps":        understanding.get("open_gaps", []),
+                    "resolved_gaps":    understanding.get("resolved_gaps", []),
+                }
+                recovery_prompt = (
+                    "There was a temporary connection issue.\n"
+                    "Here is the full understanding of the user's use case built so far:\n\n"
+                    f"```json\n{json.dumps(recovery_context, indent=2, default=str)}\n```\n\n"
+                    "Pick up exactly from this point. Immediately call:\n"
+                    "- `ask_user` if there are open gaps you need to resolve\n"
+                    "- `give_recommendation` if confirmed_facts are sufficient\n"
+                    "Do NOT produce plain text. Use one of those two tools."
+                )
+                try:
+                    resp = chat.send_message(recovery_prompt)
+                    continue  # back to top of for-loop on the SAME chat
+                except Exception as retry_e:
+                    logger.error(f"Retry attempt {exception_count} also failed: {retry_e}")
+                    continue  # let exception_count accumulate, try again next iteration
+
+            # All retries exhausted — show the friendly fallback
+            logger.error("All exception retries exhausted. Showing fallback.")
+            reasoning = session.get("state", {}).get("reasoning_so_far", "").strip()
+            fallback_text = (
+                "I'm sorry — the internal model is receiving too many simultaneous calls "
+                "and wasn't able to complete its reasoning.\n\n"
+            )
+            if reasoning:
+                fallback_text += f"**Here is my reasoning up to this point:**\n{reasoning}\n\n"
+            fallback_text += (
+                "Please **reload the chat** to start. "
+                "Sorry for the inconvenience."
+            )
+            session["history"].append({"role": "model", "content": fallback_text})
             return (
-                {"type": "error", "payload": {"message": f"Agent error: {str(e)}"}},
+                {"type": "text", "payload": {"message": fallback_text}},
                 ephemeral_trace,
             )
 
+    # Loop limit reached
+    logger.error("Reasoning loop limit reached.")
+    reasoning = session.get("state", {}).get("reasoning_so_far", "").strip()
+    fallback_text = (
+        "I'm sorry — the internal model is receiving too many simultaneous calls "
+        "and wasn't able to complete its reasoning.\n\n"
+    )
+    if reasoning:
+        fallback_text += f"**Here is my reasoning up to this point:**\n{reasoning}\n\n"
+    fallback_text += (
+        "Please **reload the chat** to continue from where we left off. "
+        "Sorry for the inconvenience."
+    )
+    session["history"].append({"role": "model", "content": fallback_text})
     return (
-        {"type": "error", "payload": {"message": "Reasoning loop limit reached. Please rephrase your question."}},
+        {"type": "text", "payload": {"message": fallback_text}},
         ephemeral_trace,
     )
