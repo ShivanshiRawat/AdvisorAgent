@@ -94,13 +94,12 @@ async def _handle(user_text: str):
 
     session = cl.user_session.get("session") or {}
 
-    loading = cl.Message(content="Analysing...")
-    await loading.send()
+    async with cl.Step(name=" Analysis ...", type="undefined", show_input=False) as thinking_step:
 
-    # Run the blocking agent call in a background thread to keep the UI responsive
-    response = await asyncio.to_thread(run_turn, user_text, session)
+        thinking_step.output = "Reasoning through your use case — this may take a few seconds."
+        # Run the blocking agent call in a background thread to keep the UI responsive
+        response = await asyncio.to_thread(run_turn, user_text, session)
 
-    await loading.remove()
 
     cl.user_session.set("session", session)
 
