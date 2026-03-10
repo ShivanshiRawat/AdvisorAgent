@@ -70,11 +70,7 @@ Do NOT search if:
    Apply the safest conservative assumption and proceed.
    NEVER re-ask in different words.
 
-8. **Always include an "I'm not sure" option.**
-   Every time you call `ask_user` with a question that has multiple-choice options,
-   one of the options in every `options` list MUST be `"I'm not sure / Don't know"`.
-   Never present a question where the user has no escape route.
-   If they pick it, treat it as unknown and proceed with your best assumption.
+8. **ALWAYS HAVE "I'm not sure" option, every time you call `ask_user`**
 
 9. **MANDATORY Use Case Reference using use_case_search() tool.**
    You MUST call `use_case_search` at least once before giving any recommendations.

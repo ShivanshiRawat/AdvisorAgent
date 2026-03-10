@@ -145,6 +145,8 @@ def _run_gemini_turn(
 
     ephemeral_trace: List[Dict[str, Any]] = []
     MAX_LOOPS = 12
+    MAX_EXCEPTION_RETRIES = 2
+    exception_count = 0
     resp = None
 
     for loop_i in range(MAX_LOOPS):
@@ -353,6 +355,39 @@ def _run_gemini_turn(
 
         except Exception as e:
             logger.error(f"Gemini loop error (iteration {loop_i}): {e}", exc_info=True)
+            exception_count += 1
+
+            if exception_count <= MAX_EXCEPTION_RETRIES:
+                logger.warning(
+                    f"Exception #{exception_count}. Retrying on same chat with understanding state "
+                    f"(attempt {exception_count}/{MAX_EXCEPTION_RETRIES})..."
+                )
+                understanding = session.get("state", {})
+                recovery_context = {
+                    "confirmed_facts":  understanding.get("confirmed_facts", {}),
+                    "query_patterns":   understanding.get("query_patterns", []),
+                    "reasoning_so_far": understanding.get("reasoning_so_far", ""),
+                    "open_gaps":        understanding.get("open_gaps", []),
+                    "resolved_gaps":    understanding.get("resolved_gaps", []),
+                }
+                recovery_prompt = (
+                    "There was a temporary connection issue.\n"
+                    "Here is the full understanding of the user's use case built so far:\n\n"
+                    f"```json\n{json.dumps(recovery_context, indent=2, default=str)}\n```\n\n"
+                    "Pick up exactly from this point. Immediately call:\n"
+                    "- `ask_user` if there are open gaps you need to resolve\n"
+                    "- `give_recommendation` if confirmed_facts are sufficient\n"
+                    "Do NOT produce plain text. Use one of those two tools."
+                )
+                try:
+                    resp = chat.send_message(recovery_prompt)
+                    continue  # back to top of for-loop on the SAME chat
+                except Exception as retry_e:
+                    logger.error(f"Retry attempt {exception_count} also failed: {retry_e}")
+                    continue  # let exception_count accumulate, try again next iteration
+
+            # All retries exhausted — show the friendly fallback
+            logger.error("All exception retries exhausted. Showing fallback.")
             reasoning = session.get("state", {}).get("reasoning_so_far", "").strip()
             fallback_text = (
                 "I'm sorry — the internal model is receiving too many simultaneous calls "
