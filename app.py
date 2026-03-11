@@ -100,6 +100,8 @@ async def _handle(user_text: str):
         # Run the blocking agent call in a background thread to keep the UI responsive
         response = await asyncio.to_thread(run_turn, user_text, session)
 
+    # Remove the thinking indicator — it should only show while processing, not after
+    await thinking_step.remove()
 
     cl.user_session.set("session", session)
 
