@@ -94,14 +94,15 @@ async def _handle(user_text: str):
 
     session = cl.user_session.get("session") or {}
 
-    async with cl.Step(name=" Analysis ...", type="undefined", show_input=False) as thinking_step:
+    # Show a plain chat-bubble loading indicator — no step/tool chrome
+    loading_msg = cl.Message(content="Analysing...")
+    await loading_msg.send()
 
-        thinking_step.output = "Reasoning through your use case — this may take a few seconds."
-        # Run the blocking agent call in a background thread to keep the UI responsive
-        response = await asyncio.to_thread(run_turn, user_text, session)
+    # Run the blocking agent call in a background thread to keep the UI responsive
+    response = await asyncio.to_thread(run_turn, user_text, session)
 
-    # Remove the thinking indicator — it should only show while processing, not after
-    await thinking_step.remove()
+    # Fire the removal in the background — don't block rendering on a server round-trip
+    asyncio.ensure_future(loading_msg.remove())
 
     cl.user_session.set("session", session)
 

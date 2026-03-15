@@ -230,17 +230,14 @@ ALL_TOOL_SCHEMAS = [
     {
         "type": "function",
         "function": {
-            "name": "get_index_queries",
+            "name": "get_default_parameters",
             "description": (
-                "Returns the DDL (CREATE INDEX) and DML (SELECT) query templates for a single "
-                "Couchbase vector index component. "
-                "Call this after giving a recommendation so the user has concrete SQL++ to adapt. "
-                "For Hybrid architectures (HVI+FTS or CVI+FTS), call this tool TWICE — once per "
-                "component — then instruct the user to run both queries independently and merge the "
-                "results at the application layer using a fusion strategy (e.g. Reciprocal Rank Fusion). "
-                "After presenting the templates, offer to substitute the user's actual bucket, "
-                "scope, collection, field names, dimensions, and similarity metric. "
-                "If the user cannot share their data model, present the general templates as-is."
+                "Call this when the user asks for the default parameter values for their recommended "
+                "Couchbase vector index. Hand it the index type and their dataset size (in total vectors). "
+                "The tool calculates the optimal values for parameters like nlist and train_list "
+                "based on the vector count, and returns the ideal index-time and query-time settings. "
+                "For Hybrid architectures (HVI+FTS or CVI+FTS), call this tool TWICE — once with "
+                "'HVI' (or 'CVI') for the vector component, and once with 'FTS' for the search component."
             ),
             "parameters": {
                 "type": "object",
@@ -248,18 +245,14 @@ ALL_TOOL_SCHEMAS = [
                     "index_type": {
                         "type": "string",
                         "enum": ["HVI", "CVI", "FTS"],
-                        "description": (
-                            "The index component to fetch query templates for. "
-                            "HVI = Hyperscale Vector Index (disk-centric, billion-scale ANN). "
-                            "CVI = Composite Vector Index (GSI filter-first, <20% selective workloads). "
-                            "FTS = Search Vector Index (keyword + vector, <100M scale). "
-                            "For Hybrid architectures, call this tool once with 'HVI' (or 'CVI') "
-                            "and once with 'FTS', then present both sets of queries and explain "
-                            "that the results must be merged at the application layer."
-                        ),
+                        "description": "The recommended index type.",
+                    },
+                    "vector_count": {
+                        "type": "integer",
+                        "description": "The total number of vectors in the dataset (e.g. 50000000).",
                     },
                 },
-                "required": ["index_type"],
+                "required": ["index_type", "vector_count"],
             },
         },
     },
@@ -376,9 +369,9 @@ ALL_TOOL_SCHEMAS = [
                         "description": (
                             "Short list of concrete things you can help the user with next. "
                             "Always include at least: generating the CREATE INDEX and SELECT queries "
-                            "for the recommended index, and answering follow-up questions about the "
-                            "recommendation. Add other relevant options based on context "
-                            "(e.g. tuning parameters, migration path, explaining eliminated alternatives). "
+                            "for the recommended index, providing optimal default index parameters for their scale, "
+                            "and answering follow-up questions about the recommendation. Add other relevant options "
+                            "based on context (e.g. migration path, explaining eliminated alternatives). "
                             "Keep each item to one short sentence — this is displayed as a menu."
                         ),
                     },
@@ -388,3 +381,4 @@ ALL_TOOL_SCHEMAS = [
         },
     },
 ]
+

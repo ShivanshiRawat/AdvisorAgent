@@ -13,7 +13,7 @@ import re
 from typing import Any, Optional
 
 from tools.reasoning import think, plan, update_state
-from tools.domain import web_search, evaluate_index_viability, compare_indexes, use_case_search, get_index_queries
+from tools.domain import web_search, evaluate_index_viability, compare_indexes, use_case_search, get_index_queries, get_default_parameters
 
 logger = logging.getLogger(__name__)
 
@@ -97,6 +97,12 @@ def execute_tool(
         elif tool_name == "get_index_queries":
             return get_index_queries(
                 index_type=args.get("index_type", "HVI"),
+            )
+
+        elif tool_name == "get_default_parameters":
+            return get_default_parameters(
+                index_type=args.get("index_type", "HVI"),
+                vector_count=int(args.get("vector_count", 0)),
             )
 
         else:

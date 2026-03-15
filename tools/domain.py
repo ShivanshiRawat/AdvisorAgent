@@ -345,3 +345,54 @@ LIMIT <top_k>;""",
         return {
             "error": f"Unknown index_type '{index_type}'. Valid values: HVI, CVI, FTS."
         }
+
+
+def get_default_parameters(index_type: str, vector_count: int) -> dict:
+    """Calculate and return default parameter values for the recommended index.
+    
+    Based on the dataset scale (vector_count), this function calculates optimal
+    default values for nlist and train_list, and returns structured parameters
+    for both index time and query time.
+    """
+    index_type = index_type.strip().upper()
+
+    if index_type in ("HVI", "CVI"):
+        nlist = max(1, vector_count // 1000)
+        
+        if vector_count < 10000:
+            train_list = vector_count
+        else:
+            train_list = min(1000000, max(vector_count // 10, 10 * nlist))
+
+        params = {
+            "index_time_parameters": {
+                "dimension": "must match embedding model output",
+                "similarity": "L2_SQUARED",
+                "quantization": "SQ8",
+                "nlist": nlist,
+                "train_list": train_list,
+                "num_replica": 0,
+                "persist_full_vector": True
+            },
+            "query_time_parameters": {
+                "nProbe": 1,
+                "reranking": False,
+                "limit": 100,
+                "similarity_query_override": "uses index default"
+            }
+        }
+        
+        if index_type == "HVI":
+            params["query_time_parameters"]["topNScan"] = "depends on query limit range (typically 40–300)"
+            
+        return params
+
+    elif index_type == "FTS":
+        return {
+            "message": "For Search Vector Index (FTS), please continue with the Couchbase UI for parameter configuration."
+        }
+    
+    else:
+        return {
+            "error": f"Unknown index_type '{index_type}'. Valid values: HVI, CVI, FTS."
+        }
