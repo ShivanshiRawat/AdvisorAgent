@@ -226,4 +226,54 @@ For **Hybrid architectures (HVI+FTS or CVI+FTS)**, call `get_default_parameters`
 - First call: the vector index component ("HVI" or "CVI") with the full vector count
 - Second call: "FTS" — this will redirect the user to configure FTS parameters via the UI
 Present both results together so the user has a complete picture of both components.
+
+---
+
+### Performance Analysis Protocol
+
+Activate this when the user asks you to analyse their performance requirements, tune their
+index, or understand what Recall, QPS, or Latency targets they should set.
+
+**Step 1 — Research the domain first**
+Before asking a single question, call `think` to reason about what you already know:
+- From the conversation history, what is the user's use case domain?
+- What can you infer about their performance priorities from that domain alone?
+  - Financial fraud / safety / compliance → Recall is critical; a miss has real consequences
+  - Real-time customer-facing (product search, recommendations) → Latency first, then QPS
+  - Internal batch pipelines / RAG / data enrichment → QPS efficiency matters most
+  - Document / legal / medical retrieval → Recall and precision closely tied
+- If the domain is unfamiliar or ambiguous, optionally call `web_search` to understand
+  the typical performance expectations for that kind of system before forming your questions.
+
+**Step 2 — Ask only what you cannot infer**
+Use `ask_user` to fill in the gaps. Frame every question in the language of the user's
+own use case — never use "QPS", "Recall", or "Latency" as bare jargon. Instead:
+
+For **Recall** (only if not already obvious from domain):
+- Anchor to their consequences: "In your [fraud detection / document search / recommendation]
+  system, what happens if the system misses a relevant result? Is it a minor miss, or does
+  it have real business or safety impact?"
+- Options: Serious — we cannot afford to miss matches / Noticeable but acceptable / Minor — approximate results are fine
+
+For **Latency** (only if not already obvious):
+- Anchor to the experience: "When someone triggers a [search / recommendation / check] in
+  your system, are they waiting on the result in real time, or does it run in the background?"
+- Follow-up (if real-time): "How long could that wait realistically be before it feels broken
+  to the user — under a second, a few seconds, or is timing flexible?"
+
+For **QPS**:
+- Anchor to their scale context: "You mentioned [X users / X dataset]. During your busiest
+  period — say a peak hour or a product launch — roughly how many of these searches might
+  fire per minute?"
+- Options: A handful (< 10/s) / Dozens (10–100/s) / Hundreds (100–1000/s) / Thousands+ (>1000/s)
+
+**Step 3 — Call give_performance_profile**
+Once you have enough signal (either inferred or answered), call `give_performance_profile`
+with a priority-ordered list of all three metrics (Recall, QPS, Latency).
+
+For each metric, you MUST explicitly categorize it into a "Low", "Moderate", or "High" bin
+using the threshold definitions embedded in the `give_performance_profile` tool schema.
+
+Provide target ranges and a single trade-off note explaining the key tension between the top two priorities.
+Target ranges must be concrete and grounded (use user numbers if given, else provide a reasoned baseline estimate based on the bin).
 """

@@ -65,4 +65,14 @@ def _record_terminal(session: Dict[str, Any], terminal_payload: Dict[str, Any]) 
             "role": "model",
             "content": f"I recommended: {', '.join(lines)}",
         })
+    elif terminal_payload["type"] == "performance_profile":
+        metrics = terminal_payload.get("args", {}).get("metrics", [])
+        summary = ", ".join(
+            f"{m.get('metric')} ({m.get('priority')}, bin: {m.get('bin')}, target: {m.get('target_range')})"
+            for m in metrics
+        )
+        session["history"].append({
+            "role": "model",
+            "content": f"I presented a performance profile: {summary}",
+        })
     # "error" and "text" types don't need history entries — the loop already handles those

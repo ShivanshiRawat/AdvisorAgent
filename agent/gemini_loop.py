@@ -308,6 +308,22 @@ def _run_gemini_turn(
                         )
                     )
 
+                elif tool_name == "give_performance_profile":
+                    terminal_found = True
+                    terminal_payload = {"type": "performance_profile", "args": args}
+                    ephemeral_trace.append({
+                        "tool": "give_performance_profile",
+                        "args": args,
+                        "content": thought,
+                        "result": "Performance profile delivered.",
+                    })
+                    tool_responses.append(
+                        types.Part.from_function_response(
+                            name=tool_name,
+                            response={"result": "Performance profile delivered to user."},
+                        )
+                    )
+
                 else:
                     result = execute_tool(
                         tool_name,

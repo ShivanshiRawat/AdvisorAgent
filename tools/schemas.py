@@ -368,8 +368,7 @@ ALL_TOOL_SCHEMAS = [
                         "items": {"type": "string"},
                         "description": (
                             "Short list of concrete things you can help the user with next. "
-                            "Always include at least: generating the CREATE INDEX and SELECT queries "
-                            "for the recommended index, providing optimal default index parameters for their scale, "
+                            "Always include at least: providing optimal default index parameters for their scale, "
                             "and answering follow-up questions about the recommendation. Add other relevant options "
                             "based on context (e.g. migration path, explaining eliminated alternatives). "
                             "Keep each item to one short sentence — this is displayed as a menu."
@@ -377,6 +376,92 @@ ALL_TOOL_SCHEMAS = [
                     },
                 },
                 "required": ["summary", "query_pattern_recommendations", "architecture_summary"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "give_performance_profile",
+            "description": (
+                "TERMINAL TOOL. Deliver the performance requirements profile after collecting the user's "
+                "operational context through human-friendly questions. "
+                "Call this once you have gathered enough signal to rank Recall, QPS, and Latency "
+                "and estimate target ranges for each. "
+                "Do NOT call this until you have asked the user the relevant questions via ask_user "
+                "and have either confirmed values or made a reasoned inference. "
+                "When assigning bins, use these thresholds: Recall — Low <0.80, Moderate 0.80-0.92, High >0.92. "
+                "QPS — Low <500 req/s, Moderate 500-1500 req/s, High >1500 req/s. "
+                "Latency (p95) — Low <35 ms, Moderate 35-80 ms, High >80 ms."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "domain_inference": {
+                        "type": "string",
+                        "description": (
+                            "A 1-2 sentence summary of what you inferred about the user's domain "
+                            "and why it drives the priority ordering you chose. "
+                            "E.g. 'Fraud detection systems are high-stakes — missing a fraudulent "
+                            "transaction is far worse than a slow result, so Recall takes priority.'"
+                        ),
+                    },
+                    "metrics": {
+                        "type": "array",
+                        "description": (
+                            "Exactly 3 entries — one each for Recall, QPS, and Latency — ordered by priority "
+                            "(primary first). Use the tool thresholds when assigning bins: Recall — Low <0.80, "
+                            "Moderate 0.80-0.92, High >0.92; QPS — Low <500 req/s, Moderate 500-1500 req/s, "
+                            "High >1500 req/s; Latency (p95) — Low <35 ms, Moderate 35-80 ms, High >80 ms."
+                        ),
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "metric": {
+                                    "type": "string",
+                                    "enum": ["Recall", "QPS", "Latency"],
+                                },
+                                "priority": {
+                                    "type": "string",
+                                    "enum": ["primary", "secondary", "tertiary"],
+                                },
+                                "bin": {
+                                    "type": "string",
+                                    "enum": ["Low", "Moderate", "High"],
+                                    "description": (
+                                        "The categorized bin for this metric using these thresholds: "
+                                        "Recall — Low <0.80, Moderate 0.80-0.92, High >0.92; "
+                                        "QPS — Low <500 req/s, Moderate 500-1500 req/s, High >1500 req/s; "
+                                        "Latency (p95) — Low <35 ms, Moderate 35-80 ms, High >80 ms."
+                                    ),
+                                },
+                                "target_range": {
+                                    "type": "string",
+                                    "description": (
+                                        "Human-readable target range for this metric. "
+                                        "Use user-provided numbers where available, otherwise a reasoned estimate. "
+                                        "Examples: '≥ 95%', '500–700 req/s', '< 100 ms p95'. "
+                                        "If truly unknown, say 'to be determined — start with X and tune from there'."
+                                    ),
+                                },
+                                "rationale": {
+                                    "type": "string",
+                                    "description": "One sentence explaining why this priority, bin, and range was chosen for this metric.",
+                                },
+                            },
+                            "required": ["metric", "priority", "bin", "target_range", "rationale"],
+                        },
+                    },
+                    "trade_off_note": {
+                        "type": "string",
+                        "description": (
+                            "The key tension between the top two metrics for this use case. "
+                            "E.g. 'Higher recall (via reranking or larger nProbe) increases latency — "
+                            "tune nProbe incrementally and measure p95 at each step.'"
+                        ),
+                    },
+                },
+                "required": ["domain_inference", "metrics", "trade_off_note"],
             },
         },
     },

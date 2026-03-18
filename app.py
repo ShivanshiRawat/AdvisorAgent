@@ -33,9 +33,11 @@ TOOL_META = {
     "use_case_search":          ("Use Case Library Search",      "search"),
     "evaluate_index_viability": ("Viability Check",              "compute"),
     "compare_indexes":          ("Comparing Index Options",      "analysis"),
+    "get_default_parameters":   ("Calculating Parameters",       "compute"),
     "web_search":               ("Web Search",                   "search"),
     "ask_user":                 ("Asking Clarifying Question",   "terminal"),
     "give_recommendation":      ("Delivering Recommendation",    "terminal"),
+    "give_performance_profile": ("Delivering Perf Profile",      "terminal"),
 }
 
 
@@ -131,6 +133,8 @@ async def _handle(user_text: str):
 
     if resp_type == "recommendation":
         await _show_recommendation(payload)
+    elif resp_type == "performance_profile":
+        await _show_performance_profile(payload)
     elif resp_type == "clarification":
         await _ask_questions(payload, session)
     elif resp_type == "text":
@@ -156,10 +160,10 @@ async def _render_trace(steps: List[Dict[str, Any]]):
         result = (step_data.get("result") or "").strip()
 
         # Terminal tools render their own output below — skip them here
-        if tool in ("ask_user", "give_recommendation"):
+        if tool in ("ask_user", "give_recommendation", "give_performance_profile"):
             continue
 
-        label, _ = TOOL_META.get(tool, (f"🔧 {tool}", "tool"))
+        label, _ = TOOL_META.get(tool, (f"{tool}", "tool"))
 
         # Deduplicate identical thoughts
         if thought and thought in seen:
@@ -381,5 +385,34 @@ async def _show_recommendation(payload: Dict[str, Any]):
         parts.append("\n---\n### 💡 What I can help with next")
         for i, step in enumerate(next_steps, 1):
             parts.append(f"{i}. {step}")
+
+    await cl.Message(content="\n".join(parts)).send()
+
+
+async def _show_performance_profile(payload: Dict[str, Any]):
+    """Render the performance requirements profile as a formatted card."""
+    _PRIORITY_BADGE = {"primary": "🥇 Primary", "secondary": "🥈 Secondary", "tertiary": "🥉 Tertiary"}
+
+    parts = ["## Performance Requirements Profile\n"]
+
+    domain_note = payload.get("domain_inference", "")
+    if domain_note:
+        parts.append(f"> {domain_note}\n")
+
+    metrics = payload.get("metrics", [])
+    if metrics:
+        parts.append("| Priority | Metric | Bin | Target | Rationale |")
+        parts.append("|---|---|---|---|---|")
+        for m in metrics:
+            badge   = _PRIORITY_BADGE.get(m.get("priority", ""), m.get("priority", ""))
+            metric  = m.get("metric", "")
+            bin_val = m.get("bin", "Unknown")
+            target  = m.get("target_range", "TBD")
+            reason  = m.get("rationale", "")
+            parts.append(f"| {badge} | **{metric}** | `{bin_val}` | `{target}` | {reason} |")
+
+    trade_off = payload.get("trade_off_note", "")
+    if trade_off:
+        parts.append(f"\n---\n> ⚖️ **Key trade-off:** {trade_off}")
 
     await cl.Message(content="\n".join(parts)).send()
