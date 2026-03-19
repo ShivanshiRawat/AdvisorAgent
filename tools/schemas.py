@@ -5,6 +5,7 @@ All tool schemas in OpenAI function-calling format.
 These are consumed by agent/gemini_loop.py which converts them to Gemini's
 native types.FunctionDeclaration format before passing to the model.
 """
+from tools.performance_bins import thresholds_for_schema
 
 ALL_TOOL_SCHEMAS = [
     {
@@ -232,10 +233,12 @@ ALL_TOOL_SCHEMAS = [
         "function": {
             "name": "get_default_parameters",
             "description": (
-                "Call this when the user asks for the default parameter values for their recommended "
-                "Couchbase vector index. Hand it the index type and their dataset size (in total vectors). "
-                "The tool calculates the optimal values for parameters like nlist and train_list "
-                "based on the vector count, and returns the ideal index-time and query-time settings. "
+                "Call this ONLY when the user explicitly asks for DEFAULT parameter values — "
+                "using words like 'default', 'standard', or 'out-of-the-box settings'. "
+                "Do NOT call this when the user asks for a starting configuration, starting point, "
+                "or recommended settings — use find_baseline_configuration for those instead. "
+                "Returns calculated optimal values for parameters like nlist and train_list "
+                "based on the vector count. "
                 "For Hybrid architectures (HVI+FTS or CVI+FTS), call this tool TWICE — once with "
                 "'HVI' (or 'CVI') for the vector component, and once with 'FTS' for the search component."
             ),
@@ -367,11 +370,27 @@ ALL_TOOL_SCHEMAS = [
                         "type": "array",
                         "items": {"type": "string"},
                         "description": (
-                            "Short list of concrete things you can help the user with next. "
-                            "Always include at least: providing optimal default index parameters for their scale, "
-                            "and answering follow-up questions about the recommendation. Add other relevant options "
-                            "based on context (e.g. migration path, explaining eliminated alternatives). "
-                            "Keep each item to one short sentence — this is displayed as a menu."
+                            "3 to 5 concrete, specific follow-up offers tailored to THIS recommendation and THIS user's situation. "
+                            "Every item must be action-oriented and specific — never generic. "
+                            "Base them on what was recommended, what was eliminated, what the user's scale/domain is, "
+                            "and what gaps or caveats surfaced during the conversation. "
+                            "Do NOT reuse the same boilerplate across conversations. "
+                            "Pick from the following pool of options (only include ones that are genuinely relevant): "
+                            "— Find a real benchmark baseline config for their scale and index type "
+                            "— Walk through what each index-time parameter controls and how to tune it "
+                            "— Explain why <eliminated index> was ruled out in more detail "
+                            "— Explain the 'Now vs Future' migration path if a dual recommendation was made "
+                            "— Explain the memory / RAM implications at their specific scale "
+                            "— Explain the selectivity math and how it affects the recommendation "
+                            "— Explain what changes would flip this recommendation to a different index "
+                            "— Explain what nProbe / topNScan / nlist control and how to tune recall vs latency "
+                            "— Explain how filter selectivity interacts with the recommended index "
+                            "— Clarify the operational difference between the two components in a Hybrid setup "
+                            "— Answer any specific follow-up about the recommendation "
+                            "Write each as a short, specific sentence from the agent's perspective. "
+                            "Example of BAD (generic): 'Answer follow-up questions about the recommendation.' "
+                            "Example of GOOD (specific): 'Explain why CVI was eliminated given your 40% filter selectivity.' "
+                            "Keep each item to one short sentence — this is displayed as a clickable menu."
                         ),
                     },
                 },
@@ -384,15 +403,16 @@ ALL_TOOL_SCHEMAS = [
         "function": {
             "name": "give_performance_profile",
             "description": (
-                "TERMINAL TOOL. Deliver the performance requirements profile after collecting the user's "
-                "operational context through human-friendly questions. "
+                "TERMINAL TOOL. Call this ONLY when the user has explicitly asked for a performance "
+                "requirements analysis (e.g. 'help me understand my performance needs', "
+                "'what recall/QPS/latency should I target?'). "
+                "Do NOT call this when collecting performance signals as part of the Benchmark Baseline "
+                "Protocol — in that case, pass the values directly to find_baseline_configuration instead. "
                 "Call this once you have gathered enough signal to rank Recall, QPS, and Latency "
                 "and estimate target ranges for each. "
                 "Do NOT call this until you have asked the user the relevant questions via ask_user "
                 "and have either confirmed values or made a reasoned inference. "
-                "When assigning bins, use these thresholds: Recall — Low <0.80, Moderate 0.80-0.92, High >0.92. "
-                "QPS — Low <500 req/s, Moderate 500-1500 req/s, High >1500 req/s. "
-                "Latency (p95) — Low <35 ms, Moderate 35-80 ms, High >80 ms."
+                f"Bin thresholds: {thresholds_for_schema()}"
             ),
             "parameters": {
                 "type": "object",
@@ -410,9 +430,7 @@ ALL_TOOL_SCHEMAS = [
                         "type": "array",
                         "description": (
                             "Exactly 3 entries — one each for Recall, QPS, and Latency — ordered by priority "
-                            "(primary first). Use the tool thresholds when assigning bins: Recall — Low <0.80, "
-                            "Moderate 0.80-0.92, High >0.92; QPS — Low <500 req/s, Moderate 500-1500 req/s, "
-                            "High >1500 req/s; Latency (p95) — Low <35 ms, Moderate 35-80 ms, High >80 ms."
+                            f"(primary first). Bin thresholds: {thresholds_for_schema()}"
                         ),
                         "items": {
                             "type": "object",
@@ -429,10 +447,7 @@ ALL_TOOL_SCHEMAS = [
                                     "type": "string",
                                     "enum": ["Low", "Moderate", "High"],
                                     "description": (
-                                        "The categorized bin for this metric using these thresholds: "
-                                        "Recall — Low <0.80, Moderate 0.80-0.92, High >0.92; "
-                                        "QPS — Low <500 req/s, Moderate 500-1500 req/s, High >1500 req/s; "
-                                        "Latency (p95) — Low <35 ms, Moderate 35-80 ms, High >80 ms."
+                                        f"The categorized bin for this metric. Thresholds: {thresholds_for_schema()}"
                                     ),
                                 },
                                 "target_range": {
@@ -462,6 +477,67 @@ ALL_TOOL_SCHEMAS = [
                     },
                 },
                 "required": ["domain_inference", "metrics", "trade_off_note"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "find_baseline_configuration",
+            "description": (
+                "Queries the internal Couchbase benchmark dataset to find the most similar "
+                "benchmark configuration to the user's use case. "
+                "Call this when the user asks for a starting configuration, baseline parameters, "
+                "or wants to know what real benchmark results look like for their scale and requirements. "
+                "You MUST have collected solution type, dataset scale, vector dimensions, and "
+                "performance targets (recall, QPS, latency) before calling this tool. "
+                "The tool bins the raw values internally and returns the closest benchmark row. "
+                "Present the result as: 'A benchmark run at <scale> with <config> achieved "
+                "<recall/QPS/latency>. Your target scale is different — use this as a starting "
+                "point for tuning.' Always include the scale_note from the result. "
+                f"Bin thresholds used internally: {thresholds_for_schema()}"
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "solution": {
+                        "type": "string",
+                        "enum": ["BHIVE", "GSI COMPOSITE"],
+                        "description": "The index/solution type. Must match exactly what is stored in the benchmark dataset.",
+                    },
+                    "target_scale": {
+                        "type": "integer",
+                        "description": (
+                            "The user's CURRENT dataset size in number of vectors/documents — today's scale, "
+                            "NOT the 3-year projected scale. Use the projected scale only for evaluate_index_viability. "
+                            "E.g. if the user has 100M today and expects 500M in 3 years, pass 100000000 here."
+                        ),
+                    },
+                    "target_dimension": {
+                        "type": "integer",
+                        "description": "Vector dimensionality. E.g. 1536 for OpenAI text-embedding-3-large.",
+                    },
+                    "target_recall": {
+                        "type": "number",
+                        "description": "User's target recall as a decimal between 0 and 1. E.g. 0.95.",
+                    },
+                    "target_qps": {
+                        "type": "number",
+                        "description": "User's target queries per second. E.g. 1200.",
+                    },
+                    "target_latency": {
+                        "type": "number",
+                        "description": "User's target P95 latency in milliseconds. E.g. 40.",
+                    },
+                },
+                "required": [
+                    "solution",
+                    "target_scale",
+                    "target_dimension",
+                    "target_recall",
+                    "target_qps",
+                    "target_latency",
+                ],
             },
         },
     },

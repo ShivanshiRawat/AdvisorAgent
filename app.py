@@ -27,17 +27,18 @@ from storage import save_turn
 # ---------------------------------------------------------------------------
 
 TOOL_META = {
-    "think":                    ("Agent Thinking",               "reasoning"),
-    "plan":                     ("Execution Plan",               "planning"),
-    "update_state":             ("Updating Understanding",       "memory"),
-    "use_case_search":          ("Use Case Library Search",      "search"),
-    "evaluate_index_viability": ("Viability Check",              "compute"),
-    "compare_indexes":          ("Comparing Index Options",      "analysis"),
-    "get_default_parameters":   ("Calculating Parameters",       "compute"),
-    "web_search":               ("Web Search",                   "search"),
-    "ask_user":                 ("Asking Clarifying Question",   "terminal"),
-    "give_recommendation":      ("Delivering Recommendation",    "terminal"),
-    "give_performance_profile": ("Delivering Perf Profile",      "terminal"),
+    "think":                        ("Agent Thinking",               "reasoning"),
+    "plan":                         ("Execution Plan",               "planning"),
+    "update_state":                 ("Updating Understanding",       "memory"),
+    "use_case_search":              ("Use Case Library Search",      "search"),
+    "evaluate_index_viability":     ("Viability Check",              "compute"),
+    "compare_indexes":              ("Comparing Index Options",      "analysis"),
+    "get_default_parameters":       ("Calculating Parameters",       "compute"),
+    "find_baseline_configuration":  ("Finding Benchmark Baseline",   "compute"),
+    "web_search":                   ("Web Search",                   "search"),
+    "ask_user":                     ("Asking Clarifying Question",   "terminal"),
+    "give_recommendation":          ("Delivering Recommendation",    "terminal"),
+    "give_performance_profile":     ("Delivering Perf Profile",      "terminal"),
 }
 
 
@@ -152,6 +153,7 @@ async def _handle(user_text: str):
 async def _render_trace(steps: List[Dict[str, Any]]):
     """Render each tool call as a collapsible step in the UI."""
     seen = set()
+    seen_calls = set()  # deduplicate by (tool, args) identity
 
     for step_data in steps:
         tool = step_data.get("tool", "")
@@ -163,9 +165,13 @@ async def _render_trace(steps: List[Dict[str, Any]]):
         if tool in ("ask_user", "give_recommendation", "give_performance_profile"):
             continue
 
-        label, _ = TOOL_META.get(tool, (f"{tool}", "tool"))
+        # Skip duplicate calls of the same tool with the same arguments
+        call_key = (tool, json.dumps(args, sort_keys=True, default=str))
+        if call_key in seen_calls:
+            continue
+        seen_calls.add(call_key)
 
-        # Deduplicate identical thoughts
+        label, _ = TOOL_META.get(tool, (f"{tool}", "tool"))
         if thought and thought in seen:
             thought = ""
         elif thought:
@@ -233,8 +239,45 @@ async def _render_trace(steps: List[Dict[str, Any]]):
             if result:
                 try:
                     parsed = json.loads(result)
-                    pretty = json.dumps(parsed, indent=2)
-                    parts.append(f"**Result:**\n```json\n{pretty}\n```")
+
+                    # find_baseline_configuration — show benchmark identity + perf in the trace step.
+                    # The LLM's text response will present the full parameter breakdown.
+                    if tool == "find_baseline_configuration" and parsed.get("status") == "success":
+                        bm = parsed.get("closest_benchmark", {})
+
+                        card = ["### 📊 Closest Benchmark Match"]
+                        bs = bm.get("benchmark_scale")
+                        bs_str = f"{bs:,}" if isinstance(bs, int) else str(bs or "—")
+                        card.append(f"| | |")
+                        card.append(f"|---|---|")
+                        card.append(f"| **Solution** | {bm.get('solution', '—')} |")
+                        card.append(f"| **Benchmark Scale** | {bs_str} vectors |")
+                        card.append(f"| **Dimensions** | {bm.get('dimensions', '—')} |")
+                        card.append(f"")
+                        card.append(f"**Measured Performance:**")
+                        card.append(f"| Metric | Value | Bin |")
+                        card.append(f"|---|---|---|")
+                        card.append(f"| Recall | `{bm.get('recall', '—')}` | `{bm.get('recall_bin', '—')}` |")
+                        card.append(f"| QPS | `{bm.get('qps', '—')}` | `{bm.get('qps_bin', '—')}` |")
+                        card.append(f"| P95 Latency | `{bm.get('p95_latency_ms', '—')} ms` | `{bm.get('latency_bin', '—')}` |")
+
+                        scale_note = parsed.get("scale_note", "")
+                        if scale_note:
+                            card.append(f"")
+                            card.append(f"> ⚠️ {scale_note}")
+
+                        parts.append("\n".join(card))
+
+                    elif tool == "find_baseline_configuration" and parsed.get("status") == "no_match":
+                        parts.append(f"🔍 {parsed.get('message', 'No benchmark data found.')}")
+
+                    elif tool == "find_baseline_configuration" and parsed.get("status") == "error":
+                        parts.append(f"⚠️ Benchmark query error: {parsed.get('message', '')}")
+
+                    else:
+                        pretty = json.dumps(parsed, indent=2)
+                        parts.append(f"**Result:**\n```json\n{pretty}\n```")
+
                 except Exception:
                     parts.append(f"**Result:**\n{result}")
 
@@ -382,9 +425,9 @@ async def _show_recommendation(payload: Dict[str, Any]):
 
     next_steps = payload.get("next_steps", [])
     if next_steps:
-        parts.append("\n---\n### 💡 What I can help with next")
-        for i, step in enumerate(next_steps, 1):
-            parts.append(f"{i}. {step}")
+        parts.append("\n---\nWould you like me to:")
+        for step in next_steps:
+            parts.append(f"- {step}")
 
     await cl.Message(content="\n".join(parts)).send()
 

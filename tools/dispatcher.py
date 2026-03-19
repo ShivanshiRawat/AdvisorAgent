@@ -14,6 +14,7 @@ from typing import Any, Optional
 
 from tools.reasoning import think, plan, update_state
 from tools.domain import web_search, evaluate_index_viability, compare_indexes, use_case_search, get_default_parameters
+from tools.performance_tools import find_baseline_configuration
 
 logger = logging.getLogger(__name__)
 
@@ -98,6 +99,27 @@ def execute_tool(
             return get_default_parameters(
                 index_type=args.get("index_type", "HVI"),
                 vector_count=int(args.get("vector_count", 0)),
+            )
+
+        elif tool_name == "find_baseline_configuration":
+            # Parse scale — the LLM may pass "700M", "1B", or a plain integer
+            scale_raw = str(args.get("target_scale", "0")).upper()
+            scale_mult = (
+                1_000_000_000 if "B" in scale_raw
+                else 1_000_000 if "M" in scale_raw
+                else 1_000 if "K" in scale_raw
+                else 1
+            )
+            scale_clean = re.sub(r"[^\d.]", "", scale_raw)
+            target_scale = int(float(scale_clean) * scale_mult) if scale_clean else 0
+
+            return find_baseline_configuration(
+                solution=str(args.get("solution", "BHIVE")).upper(),
+                target_scale=target_scale,
+                target_dimension=int(args.get("target_dimension", 0)),
+                target_recall=float(args.get("target_recall", 0.0)),
+                target_qps=float(args.get("target_qps", 0.0)),
+                target_latency=float(args.get("target_latency", 0.0)),
             )
 
         else:

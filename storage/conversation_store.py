@@ -32,23 +32,25 @@ Failures are caught, logged, and silently ignored so the agent is never interrup
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
-# Lazy Couchbase connection singleton
+# Lazy collection singleton (cluster is shared via couchbase_client)
 # ---------------------------------------------------------------------------
 
-_UNSET = object()   # sentinel: connection not yet attempted
-_collection = _UNSET  # couchbase.Collection, _UNSET, or None (failed)
+_UNSET = object()       # sentinel: connection not yet attempted
+_collection = _UNSET    # couchbase.Collection, _UNSET (not tried/failed), or None
 
 
 def _get_collection():
-    """Return the Couchbase collection, creating the connection on first call.
-    Returns None if the SDK isn't installed or the cluster is unreachable.
-    Retries on every call until a successful connection is made.
+    """Return the Couchbase collection for conversation storage.
+    Uses the shared cluster from couchbase_client so only one TCP connection
+    is maintained to the server.
+    Returns None if the cluster is unreachable or the bucket is missing;
+    retries on every call until a successful connection is made.
     """
     global _collection
     if _collection is not _UNSET and _collection is not None:
@@ -56,18 +58,17 @@ def _get_collection():
 
     try:
         import config
-        from couchbase.auth import PasswordAuthenticator
-        from couchbase.cluster import Cluster
-        from couchbase.options import ClusterOptions
+        from storage.couchbase_client import get_cluster
 
-        auth = PasswordAuthenticator(config.CB_USERNAME, config.CB_PASSWORD)
-        cluster = Cluster(f"couchbase://{config.CB_HOST}", ClusterOptions(auth))
-        cluster.wait_until_ready(timedelta(seconds=5))
+        cluster = get_cluster()
+        if cluster is None:
+            return None
+
         bucket = cluster.bucket(config.CB_BUCKET)
         scope  = bucket.scope(config.CB_SCOPE)
         _collection = scope.collection(config.CB_COLLECTION)
         logger.info(
-            "Couchbase connected: %s / %s / %s",
+            "Couchbase collection ready: %s / %s / %s",
             config.CB_BUCKET, config.CB_SCOPE, config.CB_COLLECTION,
         )
     except Exception as exc:
