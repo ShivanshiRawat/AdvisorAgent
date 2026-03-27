@@ -1,9 +1,17 @@
 """
 Configuration for the Vector Index Advisor agent.
-Gemini is the primary provider.
-"""
-import os
 
+Secrets (API keys, passwords) come from .env.
+Everything else comes from INI files under config/.
+"""
+
+import configparser
+import os
+from pathlib import Path
+
+# ---------------------------------------------------------------------------
+# .env loader (secrets only)
+# ---------------------------------------------------------------------------
 
 def _load_dotenv() -> None:
     """Load .env file from the same directory if it exists."""
@@ -24,7 +32,23 @@ def _load_dotenv() -> None:
 
 _load_dotenv()
 
-# --- Primary Provider: Gemini ---
+# ---------------------------------------------------------------------------
+# INI loader helper
+# ---------------------------------------------------------------------------
+
+_CONFIG_DIR = Path(__file__).parent / "config"
+
+
+def _read_ini(filename: str) -> configparser.ConfigParser:
+    cp = configparser.ConfigParser()
+    cp.read(_CONFIG_DIR / filename)
+    return cp
+
+
+# ---------------------------------------------------------------------------
+# Secrets (.env)
+# ---------------------------------------------------------------------------
+
 GEMINI_API_KEY: str = os.environ.get("GEMINI_API_KEY", "")
 
 if not GEMINI_API_KEY:
@@ -34,18 +58,51 @@ if not GEMINI_API_KEY:
 
 LLM_PROVIDER = "gemini"
 
-# Model: override with VIA_MODEL env var if needed
-# gemini-2.5-flash is the default — fast, highly capable, great tool-use
-MODEL: str = os.environ.get("VIA_MODEL", "gemini-2.5-flash")
+# ---------------------------------------------------------------------------
+# Couchbase  (config/couchbase.ini  +  CB_PASSWORD from .env)
+# ---------------------------------------------------------------------------
 
-# Limits
-MAX_DOC_TOKENS: int = 4000
-MAX_RETRIES: int = 2
+_cb = _read_ini("couchbase.ini")
 
-# --- Couchbase Storage (conversation persistence for debugging) ---
-CB_HOST:       str = os.environ.get("CB_HOST",       "localhost")
-CB_USERNAME:   str = os.environ.get("CB_USERNAME",   "Administrator")
-CB_PASSWORD:   str = os.environ.get("CB_PASSWORD",   "password")
-CB_BUCKET:     str = os.environ.get("CB_BUCKET",     "advisor")
-CB_SCOPE:      str = os.environ.get("CB_SCOPE",      "conversations")
-CB_COLLECTION: str = os.environ.get("CB_COLLECTION", "chats")
+CB_HOST:       str = _cb.get("connection", "host")
+CB_USERNAME:   str = _cb.get("connection", "username")
+CB_PASSWORD:   str = os.environ.get("CB_PASSWORD", "password")
+CB_TIMEOUT:    int = _cb.getint("connection", "timeout_seconds")
+
+CB_BUCKET:     str = _cb.get("conversation_storage", "bucket")
+CB_SCOPE:      str = _cb.get("conversation_storage", "scope")
+CB_COLLECTION: str = _cb.get("conversation_storage", "collection")
+
+CB_BENCH_BUCKET:     str = _cb.get("benchmark", "bucket")
+CB_BENCH_SCOPE:      str = _cb.get("benchmark", "scope")
+CB_BENCH_COLLECTION: str = _cb.get("benchmark", "collection")
+
+# ---------------------------------------------------------------------------
+# Gemini / LLM  (config/gemini.ini)
+# ---------------------------------------------------------------------------
+
+_gm = _read_ini("gemini.ini")
+
+MODEL:           str   = os.environ.get("VIA_MODEL", _gm.get("model", "name"))
+TEMPERATURE:     float = _gm.getfloat("model", "temperature")
+THINKING_BUDGET: int   = _gm.getint("model", "thinking_budget")
+
+MAX_LOOPS:    int = _gm.getint("loop", "max_loops")
+MAX_RETRIES:  int = _gm.getint("loop", "max_exception_retries")
+
+# ---------------------------------------------------------------------------
+# Performance bins / thresholds  (config/performance.ini)
+# ---------------------------------------------------------------------------
+
+_pf = _read_ini("performance.ini")
+
+RECALL_LOW_MAX:       float = _pf.getfloat("recall",  "low_max")
+RECALL_MODERATE_MAX:  float = _pf.getfloat("recall",  "moderate_max")
+
+QPS_LOW_MAX:          float = _pf.getfloat("qps",     "low_max")
+QPS_MODERATE_MAX:     float = _pf.getfloat("qps",     "moderate_max")
+
+LATENCY_LOW_MAX:      float = _pf.getfloat("latency", "low_max")
+LATENCY_MODERATE_MAX: float = _pf.getfloat("latency", "moderate_max")
+
+BENCH_RESULT_LIMIT:   int   = _pf.getint("benchmark_query", "result_limit")

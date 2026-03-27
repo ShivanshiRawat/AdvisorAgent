@@ -38,7 +38,7 @@ def get_cluster():
 
         auth = PasswordAuthenticator(config.CB_USERNAME, config.CB_PASSWORD)
         c = Cluster(f"couchbase://{config.CB_HOST}", ClusterOptions(auth))
-        c.wait_until_ready(timedelta(seconds=15))
+        c.wait_until_ready(timedelta(seconds=config.CB_TIMEOUT))
         _cluster = c
         logger.info("Couchbase cluster connected: %s", config.CB_HOST)
     except Exception as exc:

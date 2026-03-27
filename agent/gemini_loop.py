@@ -124,8 +124,8 @@ def _run_gemini_turn(
     gen_config = types.GenerateContentConfig(
         system_instruction=full_system,
         tools=_get_tools(),
-        temperature=0.3,
-        thinking_config=types.ThinkingConfig(thinking_budget=0),
+        temperature=config.TEMPERATURE,
+        thinking_config=types.ThinkingConfig(thinking_budget=config.THINKING_BUDGET),
     )
 
     prior_history = _to_gemini_history(session["history"][:-1]) if len(session["history"]) > 1 else []
@@ -144,8 +144,8 @@ def _run_gemini_turn(
     )
 
     ephemeral_trace: List[Dict[str, Any]] = []
-    MAX_LOOPS = 12
-    MAX_EXCEPTION_RETRIES = 2
+    MAX_LOOPS = config.MAX_LOOPS
+    MAX_EXCEPTION_RETRIES = config.MAX_RETRIES
     exception_count = 0
     resp = None
 

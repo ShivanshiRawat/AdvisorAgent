@@ -16,12 +16,14 @@ import logging
 from datetime import timedelta
 from typing import Any, Dict
 
-from tools.performance_bins import (
+from config import (
     RECALL_LOW_MAX, RECALL_MODERATE_MAX,
     QPS_LOW_MAX, QPS_MODERATE_MAX,
     LATENCY_LOW_MAX, LATENCY_MODERATE_MAX,
-    bin_recall, bin_qps, bin_latency,
+    BENCH_RESULT_LIMIT,
+    CB_BENCH_BUCKET, CB_BENCH_SCOPE, CB_BENCH_COLLECTION,
 )
+from tools.performance_bins import bin_recall, bin_qps, bin_latency
 
 logger = logging.getLogger(__name__)
 
@@ -33,11 +35,17 @@ from storage.couchbase_client import get_cluster
 
 
 # ── SQL++ query ───────────────────────────────────────────────────────────────
-# Field names mirror the exact document structure in benchmark._default._default.
+# Field names mirror the exact document structure in the benchmark keyspace.
 # All threshold values are injected as named parameters so they stay in sync
-# with performance_bins.py constants — never hardcoded here.
+# with config/performance.ini — never hardcoded here.
+#
+# The keyspace (bucket.scope.collection) is built from config/couchbase.ini
+# at module load time.  SQL++ named parameters ($var) only work for values,
+# not for identifiers, so the keyspace is injected via Python f-string.
 
-_BENCHMARK_QUERY = """
+_BENCHMARK_KEYSPACE = f"`{CB_BENCH_BUCKET}`.`{CB_BENCH_SCOPE}`.`{CB_BENCH_COLLECTION}`"
+
+_BENCHMARK_QUERY = f"""
 WITH params AS (
   SELECT
     $target_solution      AS target_solution,
@@ -60,7 +68,7 @@ filtered AS (
     b AS full_document,
     b.*,
     p.*
-  FROM `advisor`.benchmark.perf_data AS b, params AS p
+  FROM {_BENCHMARK_KEYSPACE} AS b, params AS p
   WHERE b.Solution = p.target_solution
     AND b.`Dataset Scale` IS VALUED
     AND b.Dimensions IS VALUED
@@ -132,7 +140,7 @@ ORDER BY
   s.Recall               DESC,
   s.`P95 Latency (ms)`   ASC,
   s.QPS                  DESC
-LIMIT 30;
+LIMIT $result_limit;
 """
 
 
@@ -194,6 +202,7 @@ def find_baseline_configuration(
                 "qps_moderate_max":     QPS_MODERATE_MAX,
                 "latency_low_max":      LATENCY_LOW_MAX,
                 "latency_moderate_max": LATENCY_MODERATE_MAX,
+                "result_limit":        BENCH_RESULT_LIMIT,
             }),
         )
 
