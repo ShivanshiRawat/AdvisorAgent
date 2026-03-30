@@ -210,12 +210,14 @@ def use_case_search(
 def get_index_queries(index_type: str) -> dict:
     """Return DDL (CREATE INDEX) and DML (SELECT) query templates for the given index type.
 
-    Templates use <placeholder> notation for fields the user must substitute.
-    The LLM should present these queries and offer to personalise them once the
-    user shares their data model (bucket / scope / collection names, field names,
-    vector dimensions, and similarity metric).
+    Templates use <placeholder> notation for ALL values — both user-specific
+    fields (bucket, scope, collection, field names) and tunable parameters
+    (dimension, similarity, nlist, etc.).
 
-    Supported index_type values: "HVI", "CVI", "FTS", "Hybrid"
+    The LLM is responsible for substituting known values from baseline
+    configuration results, default parameters, or conversation context.
+
+    Supported index_type values: "HVI", "CVI", "FTS"
     """
     index_type = index_type.strip().upper()
 
@@ -223,36 +225,63 @@ def get_index_queries(index_type: str) -> dict:
         return {
             "index_type": "Hyperscale Vector Index (HVI)",
             "ddl": """\
-CREATE VECTOR INDEX `index_name` 
-ON `bucket`.`scope`.`collection`(`vector_field` VECTOR)
--- Optional: Fields to be co-located in the index for covering queries
-INCLUDE (`scalar_field_1`, `scalar_field_2`, `metadata_field`)
+CREATE VECTOR INDEX `<your_index_name>`
+ON `<your_bucket>`.`<your_scope>`.`<your_collection>`(`<your_vector_field>` VECTOR)
+-- Optional: Fields to co-locate in the index for covering queries
+INCLUDE (`<scalar_field_1>`, `<scalar_field_2>`)
 -- Optional: Partitioning for high-scale distribution
-PARTITION BY HASH(meta().id) 
+PARTITION BY HASH(meta().id)
 WITH {
   "dimension": <integer_dimensions>,
   "similarity": "<COSINE | DOT | L2 | L2_SQUARED>",
-  "description": "<IVF_centroids,SQ_bits | IVF_centroids,PQ_subquantizers>",
+  "description": "IVF<nlist>,<SQ4 | SQ6 | SQ8 | PQ<subquantizers>x<bits>>",
   "train_list": <integer_sample_size>,
   "persist_full_vector": <true | false>,
   "scan_nprobes": <integer_cells_to_scan>,
   "num_replica": <integer_replicas>,
-  "defer_build": <true | false>
+  "defer_build": false
 };""",
             "dml": """\
-SELECT 
-    `scalar_field_1`, 
-    `metadata_field`,
-    APPROX_VECTOR_DISTANCE(`vector_field`, <search_vector>, "<similarity_metric>") AS score
-FROM `bucket`.`scope`.`collection`
-WHERE `scalar_field_1` = <filter_value> -- Only if field is in INCLUDE
-ORDER BY APPROX_VECTOR_DISTANCE(`vector_field`, <search_vector>, "<similarity_metric>")
+SELECT
+    `<your_scalar_fields>`,
+    APPROX_VECTOR_DISTANCE(
+        `<your_vector_field>`,
+        <your_search_vector>,
+        "<similarity_metric>",
+        <nProbes>,        -- optional: number of centroids to scan (default 1)
+        <true | false>    -- optional: enable reranking (requires persist_full_vector=true)
+    ) AS score
+FROM `<your_bucket>`.`<your_scope>`.`<your_collection>`
+WHERE `<scalar_field>` = <filter_value>  -- Only if field is in INCLUDE
+ORDER BY APPROX_VECTOR_DISTANCE(
+    `<your_vector_field>`,
+    <your_search_vector>,
+    "<similarity_metric>",
+    <nProbes>,
+    <true | false>
+)
 LIMIT <top_k>;""",
+            "user_must_fill": [
+                "<your_index_name>", "<your_bucket>", "<your_scope>",
+                "<your_collection>", "<your_vector_field>", "<scalar_field_1>",
+                "<scalar_field_2>", "<your_scalar_fields>", "<your_search_vector>",
+                "<filter_value>"
+            ],
+            "tool_can_fill": [
+                "<integer_dimensions>", "<COSINE | DOT | L2 | L2_SQUARED>",
+                "IVF<nlist>,<SQ4|SQ6|SQ8|PQNxB>", "<integer_sample_size>",
+                "<true | false> (persist_full_vector)", "<integer_cells_to_scan>",
+                "<integer_replicas>", "<similarity_metric>", "<nProbes>", "<top_k>"
+            ],
             "notes": (
-                "HVI is disk-centric (DiskANN/Vamana). The PARTITION BY clause is optional "
-                "but recommended for horizontal scaling across nodes. "
-                "Set persist_full_vector=true only if you want reranking (improves recall at latency cost). "
-                "nprobes controls the recall/latency trade-off at query time — higher = better recall, more latency."
+                "HVI is disk-centric (DiskANN/Vamana). PARTITION BY is optional "
+                "but recommended for horizontal scaling. "
+                "persist_full_vector=true enables reranking (better recall, more latency). "
+                "scan_nprobes controls recall/latency trade-off at query time. "
+                "description format: IVF<nlist>,<quantization> where quantization is "
+                "SQ4, SQ6, SQ8, or PQ<subquantizers>x<bits> (e.g. IVF256,SQ8 or IVF512,PQ32x8). "
+                "Omit nlist for auto (vectors/1000). "
+                "nProbes and reranking are optional 4th/5th args to APPROX_VECTOR_DISTANCE."
             ),
         }
 
@@ -260,46 +289,59 @@ LIMIT <top_k>;""",
         return {
             "index_type": "Composite Vector Index (CVI)",
             "ddl": """\
-CREATE INDEX `<index_name>`
-ON `<bucket>`.`<scope>`.`<collection>`(
-    `<scalar_field_1>`,           -- leading filter field (most selective first)
-    `<scalar_field_2>`,           -- additional filter fields as needed
-    `<vector_field>` VECTOR
+CREATE INDEX `<your_index_name>`
+ON `<your_bucket>`.`<your_scope>`.`<your_collection>`(
+    `<your_scalar_field_1>`,           -- leading filter field (most selective first)
+    `<your_scalar_field_2>`,           -- additional filter fields as needed
+    `<your_vector_field>` VECTOR
 )
 -- Optional: partition on the most selective scalar field
-PARTITION BY HASH(`<scalar_field_1>`)
+PARTITION BY HASH(`<your_scalar_field_1>`)
 WITH {
-  "dimension":   <integer — must match your embedding model output, e.g. 1536>,
+  "dimension":   <integer_dimensions>,
   "similarity":  "<COSINE | DOT | L2 | L2_SQUARED>",
-  "description": "<IVF_<centroids>,SQ8>",
-  "train_list":  <integer — sample size for quantisation training, e.g. 100000>,
-  "num_replica": <integer — index replicas for HA, e.g. 1>,
-  "defer_build": <true | false>
+  "description": "IVF<nlist>,<SQ4 | SQ6 | SQ8 | PQ<subquantizers>x<bits>>",
+  "train_list":  <integer_sample_size>,
+  "num_replica": <integer_replicas>,
+  "defer_build": false
 };""",
             "dml": """\
 SELECT
     meta().id,
-    `<returned_scalar_fields>`,
+    `<your_scalar_fields>`,
     APPROX_VECTOR_DISTANCE(
-        `<vector_field>`,
-        <search_vector_array>,
+        `<your_vector_field>`,
+        <your_search_vector>,
         "<COSINE | DOT | L2 | L2_SQUARED>"
     ) AS distance
-FROM `<bucket>`.`<scope>`.`<collection>`
-WHERE `<scalar_field_1>` = <value>
-  AND `<scalar_field_2>` > <value>   -- match the leading index key order
+FROM `<your_bucket>`.`<your_scope>`.`<your_collection>`
+WHERE `<your_scalar_field_1>` = <value>
+  AND `<your_scalar_field_2>` > <value>   -- match the leading index key order
 ORDER BY APPROX_VECTOR_DISTANCE(
-    `<vector_field>`,
-    <search_vector_array>,
+    `<your_vector_field>`,
+    <your_search_vector>,
     "<COSINE | DOT | L2 | L2_SQUARED>"
 )
 LIMIT <top_k>;""",
+            "user_must_fill": [
+                "<your_index_name>", "<your_bucket>", "<your_scope>",
+                "<your_collection>", "<your_vector_field>",
+                "<your_scalar_field_1>", "<your_scalar_field_2>",
+                "<your_scalar_fields>", "<your_search_vector>", "<value>"
+            ],
+            "tool_can_fill": [
+                "<integer_dimensions>", "<COSINE | DOT | L2 | L2_SQUARED>",
+                "IVF<nlist>,<SQ4|SQ6|SQ8|PQNxB>", "<integer_sample_size>",
+                "<integer_replicas>", "<top_k>"
+            ],
             "notes": (
-                "CVI uses GSI Filter-First logic: scalar WHERE conditions are applied at the index "
-                "level before the ANN step. For maximum benefit the filter must be <20% selective "
-                "(i.e., less than 20% of the corpus is eligible for vector search). "
-                "Order scalar fields in the CREATE INDEX key list with the most selective field first. "
-                "The full index must fit in RAM — monitor memory usage as the corpus grows."
+                "CVI uses GSI Filter-First logic: scalar WHERE conditions are applied at "
+                "the index level before the ANN step. For maximum benefit the filter must "
+                "be <20% selective. Order scalar fields with the most selective first. "
+                "The full index must fit in RAM. "
+                "description format: IVF<nlist>,<quantization> where quantization is "
+                "SQ4, SQ6, SQ8, or PQ<subquantizers>x<bits> (e.g. IVF4096,SQ8 or IVF,PQ32x8). "
+                "Omit nlist for auto (vectors/1000)."
             ),
         }
 
@@ -307,8 +349,9 @@ LIMIT <top_k>;""",
         return {
             "index_type": "Search Vector Index (FTS)",
             "ddl": (
-                "Search Vector Indexes are created via the Couchbase UI (Search Service → Create Index) "
-                "or the REST API — not via SQL++. Key settings to configure in the UI:\n"
+                "Search Vector Indexes are created via the Couchbase UI "
+                "(Search Service → Create Index) or the REST API — not via SQL++.\n"
+                "Key settings to configure in the UI:\n"
                 "  • Index name\n"
                 "  • Bucket / Scope / Collection\n"
                 "  • Vector field name and dimension\n"
@@ -319,25 +362,31 @@ LIMIT <top_k>;""",
             ),
             "dml": """\
 -- Hybrid keyword + vector search via FTS
-SELECT meta().id, `<scalar_fields>`, score() AS relevance_score
-FROM `<bucket>`.`<scope>`.`<collection>`
-WHERE SEARCH(`<collection>`, {
+SELECT meta().id, `<your_scalar_fields>`, score() AS relevance_score
+FROM `<your_bucket>`.`<your_scope>`.`<your_collection>`
+WHERE SEARCH(`<your_collection>`, {
     "query": {
-        "match": "<keyword_query_string>",
-        "field":  "<text_field>"
+        "match": "<your_keyword_query>",
+        "field":  "<your_text_field>"
     },
     "knn": [{
-        "field":  "<vector_field>",
-        "vector": <search_vector_array>,
+        "field":  "<your_vector_field>",
+        "vector": <your_search_vector>,
         "k":      <top_k>
     }]
 })
 LIMIT <top_k>;""",
+            "user_must_fill": [
+                "<your_bucket>", "<your_scope>", "<your_collection>",
+                "<your_vector_field>", "<your_text_field>",
+                "<your_scalar_fields>", "<your_search_vector>",
+                "<your_keyword_query>"
+            ],
+            "tool_can_fill": ["<top_k>"],
             "notes": (
-                "FTS Search Vector Index is strictly limited to ~100M vectors due to memory-mapping. "
-                "Use the SEARCH() function in SQL++ to issue hybrid (keyword + vector) queries. "
-                "For pure vector search without keyword scoring, the APPROX_VECTOR_DISTANCE "
-                "on a standard index is more efficient."
+                "FTS indexes are NOT created via SQL++. Use the Couchbase Web Console. "
+                "The SELECT query uses the SEARCH() function for hybrid keyword + vector queries. "
+                "FTS is limited to ~100M vectors due to memory-mapping constraints."
             ),
         }
 

@@ -370,26 +370,18 @@ ALL_TOOL_SCHEMAS = [
                         "type": "array",
                         "items": {"type": "string"},
                         "description": (
-                            "3 to 5 concrete, specific follow-up offers tailored to THIS recommendation and THIS user's situation. "
-                            "Every item must be action-oriented and specific — never generic. "
-                            "Base them on what was recommended, what was eliminated, what the user's scale/domain is, "
-                            "and what gaps or caveats surfaced during the conversation. "
-                            "Do NOT reuse the same boilerplate across conversations. "
-                            "Pick from the following pool of options (only include ones that are genuinely relevant): "
-                            "— Find a real benchmark baseline config for their scale and index type "
-                            "— Walk through what each index-time parameter controls and how to tune it "
-                            "— Explain why <eliminated index> was ruled out in more detail "
-                            "— Explain the 'Now vs Future' migration path if a dual recommendation was made "
-                            "— Explain the memory / RAM implications at their specific scale "
-                            "— Explain the selectivity math and how it affects the recommendation "
-                            "— Explain what changes would flip this recommendation to a different index "
-                            "— Explain what nProbe / topNScan / nlist control and how to tune recall vs latency "
-                            "— Explain how filter selectivity interacts with the recommended index "
-                            "— Clarify the operational difference between the two components in a Hybrid setup "
-                            "— Answer any specific follow-up about the recommendation "
-                            "Write each as a short, specific sentence from the agent's perspective. "
-                            "Example of BAD (generic): 'Answer follow-up questions about the recommendation.' "
-                            "Example of GOOD (specific): 'Explain why CVI was eliminated given your 40% filter selectivity.' "
+                            "3 to 5 concrete, specific follow-up actions tailored to THIS conversation. "
+                            "Do NOT use a fixed set of suggestions. Instead, reason about:\n"
+                            "1. What was the user's original question and what might they naturally ask next?\n"
+                            "2. What gaps, caveats, or trade-offs surfaced during this conversation that deserve deeper explanation?\n"
+                            "3. What was eliminated and might the user want to understand why?\n"
+                            "4. What operational or tuning step is the logical next move after receiving this recommendation?\n"
+                            "5. What did the user seem uncertain about that you could proactively clarify?\n\n"
+                            "Each item must be a short, specific sentence written from the agent's perspective. "
+                            "Never repeat the same suggestions across different conversations. "
+                            "Never use generic phrases like 'Answer follow-up questions' or 'Explain parameters'. "
+                            "Ground every suggestion in something concrete from THIS conversation — "
+                            "reference the user's scale, their index, their filter, their domain, or their stated concern. "
                             "Keep each item to one short sentence — this is displayed as a clickable menu."
                         ),
                     },
@@ -538,6 +530,34 @@ ALL_TOOL_SCHEMAS = [
                     "target_qps",
                     "target_latency",
                 ],
+            },
+        },
+    },
+    # ── Query template tool ──────────────────────────────────────────
+    {
+        "type": "function",
+        "function": {
+            "name": "get_index_queries",
+            "description": (
+                "Returns CREATE INDEX (DDL) and SELECT (DML) query templates for the "
+                "given index type. Templates contain <placeholder> notation for ALL values. "
+                "The response includes two lists: 'user_must_fill' (bucket, scope, collection, "
+                "field names — only the user knows these) and 'tool_can_fill' (dimension, "
+                "similarity, nlist, etc. — values the LLM can substitute from earlier baseline "
+                "or default parameter results). "
+                "Call this when the user asks for CREATE INDEX statements, query syntax, "
+                "DDL, or query templates."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "index_type": {
+                        "type": "string",
+                        "description": "The index type to get templates for.",
+                        "enum": ["HVI", "CVI", "FTS"],
+                    },
+                },
+                "required": ["index_type"],
             },
         },
     },
