@@ -23,7 +23,7 @@
 **Performance Nuance:** Because vector fetching requires SSD I/O, HVI has a slightly higher latency floor than purely in-memory indexes. However, latency remains stable as the dataset grows and does not degrade with scale the way memory-mapped approaches do.
 
 **Best For:**
-- Large-scale semantic retrieval and recommendation with mid-high filtering.
+- Pure vector searches at massive scale (content discovery, recommendations, anomaly detection).
 - Deployments where the RAM budget is constrained relative to dataset size.
 - Use cases prioritizing high accuracy with low latency at massive scale.
 
@@ -151,6 +151,29 @@ CVI performance degrades severely if it begins page swapping due to RAM limitati
 Determine if the user has an established footprint in GSI (Index) or FTS (Search).
 try to stay in their existing "service neighborhood" unless scale, use case requirements or growth forces a pivot.
 
+---
+
+## Pivot 6: Migration Friction Tiers
+
+Not all index migrations are equal. The effort required depends on whether the migration stays within the same Couchbase service or crosses service boundaries.
+
+**Low Friction — CVI ↔ HVI (same Index Service):**
+- Both use the Index Service (GSI).
+- Same SQL++ DDL syntax (CREATE INDEX / CREATE VECTOR INDEX).
+- Same query function: APPROX_VECTOR_DISTANCE().
+- Migration = create a new index definition + rebuild. No application query changes required beyond the DDL.
+- Typical effort: hours to a day, depending on dataset size and index build time.
+
+**High Friction — FTS ↔ HVI/CVI (cross-service migration):**
+- FTS uses the Search Service; HVI/CVI use the Index Service.
+- Completely different query API: SEARCH() function vs APPROX_VECTOR_DISTANCE().
+- Application code must be rewritten to use a different query syntax.
+- May require provisioning new service nodes if the target service is not already running.
+- Typical effort: days to weeks, including application changes, testing, and rollout.
+
+**Implication for recommendations:**
+When current signals favor CVI but future scale favors HVI, recommend CVI now — the future migration is cheap. When FTS is involved, weigh the cross-service migration cost heavily before recommending a path that will require it later.
+
 
 
 ---
@@ -177,7 +200,7 @@ Modifying them typically requires a **rebuild (re-index)**.
 | **Dimension** | Length of the embedding vector (e.g., 768, 1536). Must match the embedding model output exactly. | Fixed (must match embedding model) | Higher dimensions increase storage requirements, memory consumption, and computational cost for both indexing and search. |
 | **Similarity** | Distance metric used for scoring. Valid values: `L2_SQUARED` (default), `L2` (Euclidean), `DOT` (Dot Product), `COSINE`. Aliases: `EUCLIDEAN` = `L2`, `EUCLIDEAN_SQUARED` = `L2_SQUARED`. | `L2_SQUARED` | Critical for mathematical correctness. Must align with the embedding model’s training objective to ensure accurate similarity scoring. |
 | **Quantization** | Compression technique applied to vectors, set via the `description` WITH clause parameter. Format: `IVF<nlist>,<quantization>` where quantization is `SQ4`, `SQ6`, `SQ8`, or `PQ<subquantizers>x<bits>`. Examples: `IVF256,SQ8`, `IVF,PQ32x8`. Omit nlist number for auto (vectors/1000). SQ options: SQ4 (4-bit, 16 bins), SQ6 (6-bit, 64 bins), SQ8 (8-bit, 256 bins). PQ requires subquantizers to be a divisor of dimensions. | `IVF,SQ8` | Reduces memory and disk footprint by storing compressed representations. SQ8 offers the best recall/memory balance for low-dimensional data. SQ4 suits billion-scale low-dimensional datasets. PQ dramatically reduces memory for high-dimensional data but lowers recall and QPS. |
-| **nlist (Centroids)** | Number of clusters used to partition the vector space. | `num_vectors / 1000` | Higher values create more (smaller) clusters. Improves query throughput and reduces latency, but increases index build time and memory overhead. |
+| **nlist (Centroids)** | Number of clusters used to partition the vector space. | `num_vectors / 1000` | **Behaves differently per index type.** CVI: higher nlist improves QPS and reduces latency. HVI: lower nlist (fewer, larger centroids) tends to perform better because HVI uses algorithms that skip distant vectors within each centroid; increase nlist for HVI only if the working dataset far exceeds the memory quota. Both: higher nlist increases build time and memory overhead. |
 | **train_list** | Number of vectors sampled to train quantization clusters. | If total vectors < 10,000: sample all vectors.<br>If ≥ 10,000: `max(num_vectors / 10, 10 × nlist)` capped at 1,000,000. | Higher values improve clustering quality and recall, but significantly increase build time and CPU usage during training. |
 | **num_replica** | Number of index replicas maintained for availability and scaling. | `0` | Improves throughput under concurrent workloads and increases fault tolerance, but multiplies storage consumption. |
 | **persist_full_vector** | Boolean flag to store original uncompressed vectors alongside compressed representations. | `true` | Required for reranking. Significantly increases disk usage and storage cost. |
@@ -255,7 +278,7 @@ Vector index tuning involves balancing three primary objectives: **recall, speed
 - Disable **persist_full_vector**
 - Use lower **train_list**
 - Use efficient **Quantization** (e.g., `SQ8`)
-- Prefer **CVI** over **HVI** for very large datasets
+- Prefer **HVI** over **CVI** for very large datasets (HVI is disk-centric with ~2% memory footprint)
 - For Search Index: Use **Optimized For = memory-efficient**
 
 **Result:** Reduced disk and memory footprint, but lower maximum recall and no reranking capability.
