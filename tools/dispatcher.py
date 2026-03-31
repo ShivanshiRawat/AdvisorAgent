@@ -23,8 +23,7 @@ def execute_tool(
     tool_name: str,
     args: dict,
     session_state: Optional[dict] = None,
-    gemini_client=None,
-    gemini_model: str = None,
+    provider: Any = None,
 ) -> Any:
     """Execute a non-terminal tool and return its result.
     Terminal tools (ask_user, give_recommendation) are handled by the agent loop.
@@ -42,12 +41,7 @@ def execute_tool(
             return "Error: No session state available."
 
         elif tool_name == "web_search":
-            # Returns (text, source_urls) tuple — caller handles the split
-            return web_search(
-                args.get("query", ""),
-                gemini_client=gemini_client,
-                gemini_model=gemini_model,
-            )
+            return web_search(args.get("query", ""), provider=provider)
 
         elif tool_name == "use_case_search":
             return use_case_search(

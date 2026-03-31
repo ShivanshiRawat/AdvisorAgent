@@ -18,55 +18,16 @@ logger = logging.getLogger(__name__)
 _USE_CASES_PATH = str(Path(__file__).parent.parent / "data" / "use_cases.json")
 
 
-def web_search(query: str, gemini_client=None, gemini_model: str = None) -> Tuple[str, list]:
-    """
-    Search the web using Gemini's built-in Google Search grounding.
+def web_search(query: str, provider=None) -> Tuple[str, list]:
+    """Search the web via the active LLM provider.
+
     Returns a tuple of (text_result, source_urls).
-
-    NOTE: Gemini does not allow google_search and custom FunctionDeclarations
-    in the same API call. This function makes a separate, dedicated Gemini
-    call with only the google_search tool enabled.
+    The concrete implementation (e.g. Gemini Google Search grounding,
+    OpenAI knowledge fallback) lives inside each provider.
     """
-    if gemini_client is None:
-        return "Web search unavailable: no Gemini client provided.", []
-
-    try:
-        from google.genai import types as genai_types
-
-        grounding_tool = genai_types.Tool(google_search=genai_types.GoogleSearch())
-
-        search_query = f"Couchbase {query}" if "couchbase" not in query.lower() else query
-
-        response = gemini_client.models.generate_content(
-            model=gemini_model or "gemini-2.5-flash",
-            contents=search_query,
-            config=genai_types.GenerateContentConfig(
-                tools=[grounding_tool],
-                temperature=0.1,
-            ),
-        )
-
-        text_result = response.text or "No results found."
-
-        # Extract source URLs from grounding metadata
-        source_urls = []
-        try:
-            grounding_meta = response.candidates[0].grounding_metadata
-            if grounding_meta and grounding_meta.grounding_chunks:
-                for chunk in grounding_meta.grounding_chunks:
-                    if chunk.web and chunk.web.uri:
-                        source_urls.append({
-                            "url": chunk.web.uri,
-                            "title": chunk.web.title or chunk.web.uri,
-                        })
-        except Exception as meta_err:
-            logger.warning(f"Could not extract grounding metadata: {meta_err}")
-
-        return text_result, source_urls
-
-    except Exception as e:
-        logger.error(f"Google Search grounding error: {e}")
-        return f"Search error: {str(e)}", []
+    if provider is None:
+        return "Web search unavailable: no LLM provider.", []
+    return provider.web_search(query)
 
 
 

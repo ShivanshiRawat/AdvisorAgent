@@ -2,8 +2,8 @@
 tools/schemas.py
 
 All tool schemas in OpenAI function-calling format.
-These are consumed by agent/gemini_loop.py which converts them to Gemini's
-native types.FunctionDeclaration format before passing to the model.
+These are consumed by the active LLM provider (agent/providers/) which
+converts them to the provider's native format before passing to the model.
 """
 from tools.performance_bins import thresholds_for_schema
 

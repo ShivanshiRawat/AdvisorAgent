@@ -3,6 +3,9 @@ Configuration for the Vector Index Advisor agent.
 
 Secrets (API keys, passwords) come from .env.
 Everything else comes from INI files under config/.
+
+The active LLM provider is selected via config/llm.ini [provider] name
+or the LLM_PROVIDER environment variable.
 """
 
 import configparser
@@ -46,17 +49,45 @@ def _read_ini(filename: str) -> configparser.ConfigParser:
 
 
 # ---------------------------------------------------------------------------
-# Secrets (.env)
+# LLM provider  (config/llm.ini)
 # ---------------------------------------------------------------------------
 
-GEMINI_API_KEY: str = os.environ.get("GEMINI_API_KEY", "")
+_llm = _read_ini("llm.ini")
 
-if not GEMINI_API_KEY:
+LLM_PROVIDER: str = os.environ.get(
+    "LLM_PROVIDER", _llm.get("provider", "name", fallback="gemini"),
+).lower()
+
+# Common LLM settings
+TEMPERATURE: float = _llm.getfloat("common", "temperature", fallback=0.3)
+MAX_LOOPS:   int   = _llm.getint("loop", "max_loops", fallback=12)
+MAX_RETRIES: int   = _llm.getint("loop", "max_exception_retries", fallback=2)
+
+# Provider-specific model name (section matches provider name)
+MODEL: str = os.environ.get(
+    "VIA_MODEL", _llm.get(LLM_PROVIDER, "model", fallback=""),
+)
+
+# Gemini-specific (harmlessly ignored by other providers)
+THINKING_BUDGET: int = _llm.getint("gemini", "thinking_budget", fallback=0)
+
+# ---------------------------------------------------------------------------
+# API key resolution  (provider → env-var name)
+# ---------------------------------------------------------------------------
+
+_KEY_ENV_MAP = {
+    "gemini": "GEMINI_API_KEY",
+    "openai": "OPENAI_API_KEY",
+}
+
+_key_env_var = _KEY_ENV_MAP.get(LLM_PROVIDER, f"{LLM_PROVIDER.upper()}_API_KEY")
+LLM_API_KEY: str = os.environ.get(_key_env_var, "")
+
+if not LLM_API_KEY:
     raise EnvironmentError(
-        "GEMINI_API_KEY is not set. Add it to your .env file."
+        f"{_key_env_var} is not set. Add it to your .env file "
+        f"(current LLM_PROVIDER={LLM_PROVIDER})."
     )
-
-LLM_PROVIDER = "gemini"
 
 # ---------------------------------------------------------------------------
 # Couchbase  (config/couchbase.ini  +  CB_PASSWORD from .env)
@@ -76,19 +107,6 @@ CB_COLLECTION: str = _cb.get("conversation_storage", "collection")
 CB_BENCH_BUCKET:     str = _cb.get("benchmark", "bucket")
 CB_BENCH_SCOPE:      str = _cb.get("benchmark", "scope")
 CB_BENCH_COLLECTION: str = _cb.get("benchmark", "collection")
-
-# ---------------------------------------------------------------------------
-# Gemini / LLM  (config/gemini.ini)
-# ---------------------------------------------------------------------------
-
-_gm = _read_ini("gemini.ini")
-
-MODEL:           str   = os.environ.get("VIA_MODEL", _gm.get("model", "name"))
-TEMPERATURE:     float = _gm.getfloat("model", "temperature")
-THINKING_BUDGET: int   = _gm.getint("model", "thinking_budget")
-
-MAX_LOOPS:    int = _gm.getint("loop", "max_loops")
-MAX_RETRIES:  int = _gm.getint("loop", "max_exception_retries")
 
 # ---------------------------------------------------------------------------
 # Performance bins / thresholds  (config/performance.ini)

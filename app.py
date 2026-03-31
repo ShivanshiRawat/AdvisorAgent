@@ -35,6 +35,7 @@ TOOL_META = {
     "compare_indexes":              ("Comparing Index Options",      "analysis"),
     "get_default_parameters":       ("Calculating Parameters",       "compute"),
     "find_baseline_configuration":  ("Finding Benchmark Baseline",   "compute"),
+    "get_index_queries":            ("Generating Query Templates",   "compute"),
     "web_search":                   ("Web Search",                   "search"),
     "ask_user":                     ("Asking Clarifying Question",   "terminal"),
     "give_recommendation":          ("Delivering Recommendation",    "terminal"),

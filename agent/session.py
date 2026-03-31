@@ -4,21 +4,20 @@ agent/session.py
 Session lifecycle helpers:
 - Initialise a fresh session dict.
 - Compress long histories into the narrative_summary to stay within token limits.
-- Convert internal history format to Gemini Content objects.
 - Load the expert knowledge base from AGENT.md.
+
+This module is provider-agnostic; history conversion to provider-specific
+types is handled inside each provider implementation.
 """
 
 from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import Any, Dict, List
-
-from google.genai import types
+from typing import Any, Dict
 
 logger = logging.getLogger(__name__)
 
-# AGENT.md lives at the project root (two levels up from this file)
 _AGENT_MD_PATH = Path(__file__).parent.parent / "AGENT.md"
 
 
@@ -28,7 +27,7 @@ def _load_agent_md() -> str:
         if _AGENT_MD_PATH.exists():
             return _AGENT_MD_PATH.read_text(encoding="utf-8")
     except Exception as e:
-        logger.error(f"Failed to load AGENT.md: {e}")
+        logger.error("Failed to load AGENT.md: %s", e)
     return ""
 
 
@@ -71,19 +70,3 @@ def _compress_history(session: Dict[str, Any]) -> None:
         )
 
     session["history"] = history[:2] + history[-10:]
-
-
-def _to_gemini_history(history: List[Dict[str, Any]]) -> List[types.Content]:
-    """Convert internal history list to Gemini Content objects."""
-    result = []
-    for msg in history:
-        role = "user" if msg["role"] == "user" else "model"
-        content = msg.get("content") or ""
-        if content:
-            result.append(
-                types.Content(
-                    role=role,
-                    parts=[types.Part(text=content)],
-                )
-            )
-    return result

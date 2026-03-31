@@ -4,16 +4,17 @@ agent/core.py
 Public API for the VIA agent.
 run_turn is the single entry point called by app.py.
 It orchestrates session initialisation, unknown-response detection,
-history management, and delegates to the Gemini loop.
+history management, and delegates to the provider-agnostic LLM loop.
 """
 
 from __future__ import annotations
 
 from typing import Any, Dict
 
+from agent.providers import get_provider
 from agent.session import _init_session, _compress_history
 from agent.unknown_handler import _is_unknown_response, _build_unknown_note
-from agent.gemini_loop import _run_gemini_turn
+from agent.llm_loop import run_llm_turn
 
 
 def run_turn(user_message: str, session: Dict[str, Any]) -> Dict[str, Any]:
@@ -27,7 +28,6 @@ def run_turn(user_message: str, session: Dict[str, Any]) -> Dict[str, Any]:
     _init_session(session)
     _compress_history(session)
 
-    # Detect "I don't know" responses and inject a directive for the LLM
     if _is_unknown_response(user_message):
         effective_message = _build_unknown_note(user_message)
     else:
@@ -35,7 +35,8 @@ def run_turn(user_message: str, session: Dict[str, Any]) -> Dict[str, Any]:
 
     session["history"].append({"role": "user", "content": user_message})
 
-    terminal_payload, ephemeral_trace = _run_gemini_turn(session, effective_message)
+    provider = get_provider()
+    terminal_payload, ephemeral_trace = run_llm_turn(provider, session, effective_message)
 
     _record_terminal(session, terminal_payload)
 
