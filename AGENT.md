@@ -68,6 +68,19 @@
 
 **Performance Nuance:** FTS is vertically limited. As vector count approaches the 100M range, memory pressure increases significantly.
 
+**Internal Mechanics:**
+- Built on FAISS integrated into FTS.
+- Uses **DCP** to stream data from Data Service → Search Service.
+- Data stored in **segments**:
+  - `persister` → flushes in-memory segments to disk
+  - `merger` → consolidates segments + triggers **automatic retraining**
+- Uses **snapshotting** for rollback safety.
+
+**Automatic Index Behavior:**
+- <1K vectors → Flat (exact search)
+- 1K–10K → IVF + Flat
+- ≥10K → IVF + Scalar Quantization
+
 **Best For:**
 - Applications relying on text relevance plus semantic similarity at moderate scale (<100M vectors).
 - Use cases requiring autocomplete, fuzzy matching, and geospatial constraints integrated with vectors.
@@ -237,6 +250,31 @@ The Search Vector Index (FTS-based) is configured via the UI and exposes high-le
 | **Optimized For** | `latency`, `memory-efficient`, `recall` | Predefined optimization profile that adjusts internal ANN parameters. | **Latency**: Uses default `nlist` and `nProbe`.<br>**Memory-efficient**: Uses `IVFSQ8` to reduce memory footprint.<br>**Recall**: Doubles `nProbe`, improving accuracy but increasing latency. |
 | **Number of Replicas** | Depends on number of nodes | Number of index replicas for high availability and scaling. | Improves concurrent query throughput and resilience, but increases storage usage proportionally. |
 
+### Advanced Query-Time Controls (FTS Vector)
+
+| Parameter | Role | Impact |
+|----------|------|--------|
+| **num_candidates** | Candidates retrieved per shard | **Primary recall lever** |
+| **nprobe** | Number of clusters searched | Recall ↑, Latency ↑, QPS ↓ |
+| **k** | Final results | Minimal impact |
+
+**Rules:**
+- `num_candidates ≥ 3–5 × k`
+- Increase `nprobe` to improve recall
+- Decrease `nprobe` to improve latency/QPS
+
+**Heuristic:**
+nprobe ≈ √nlist
+
+**Quantization Adjustment:**
+- 8-bit → default balance
+- 4-bit → saves memory but reduces accuracy
+
+Rule:
+If using 4-bit, increase `nprobe` by **20–30%**
+
+**Shard Starvation (FTS):**  
+If `num_candidates` is too low relative to `k`, shards may drop true top results early, causing poor global recall even when `k` is correct.
 
 ---
 
@@ -292,6 +330,16 @@ Vector index tuning involves balancing three primary objectives: **recall, speed
 **Memory Pressure (FTS):** In memory-constrained environments, even if an index is under 100M, it may not fit in FTS RAM. Hyperscale is the better choice for high scale with low RAM budgets.
 
 **Dimensions & Metrics:** Never Assume. Dimensions must match the model output exactly (e.g., 768 or 1536), or data is silently ignored.
+
+**Quick Diagnosis: FTS Vector Issues**
+
+- Slow Index Build
+  Segment merging + automatic retraining in progress
+- Low Recall
+  Increase `nprobe` and `num_candidates`
+  Verify similarity metric
+- Hisgh Memory Usage
+  Use `memory-efficient` (4-bit quantization)
 
 ---
 

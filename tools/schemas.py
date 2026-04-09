@@ -171,9 +171,19 @@ ALL_TOOL_SCHEMAS = [
             "parameters": {
                 "type": "object",
                 "properties": {
+                    "current_vector_count": {
+                        "type": "string",
+                        "description": (
+                            "CURRENT vector count today (e.g. '20000000' or '20M'). "
+                            "This is the primary routing factor — exclusions are based on this value only."
+                        ),
+                    },
                     "projected_vector_count": {
                         "type": "string",
-                        "description": "3-year projected vector count (e.g. '50000000' or '50M').",
+                        "description": (
+                            "Optional. 3-year projected vector count (e.g. '120000000' or '120M'). "
+                            "Used only to add a forward-looking NOTE — never changes the primary index choice."
+                        ),
                     },
                     "filter_selectivity_pct": {
                         "type": "string",
@@ -187,7 +197,7 @@ ALL_TOOL_SCHEMAS = [
                         "description": "'true' or 'false'. Does the user need fuzzy matching or BM25 keyword search?",
                     },
                 },
-                "required": ["projected_vector_count", "filter_selectivity_pct", "requires_keyword_search"],
+                "required": ["current_vector_count", "filter_selectivity_pct", "requires_keyword_search"],
             },
         },
     },
@@ -365,6 +375,56 @@ ALL_TOOL_SCHEMAS = [
                             "shared_indexes": {"type": "string"},
                             "operational_notes": {"type": "string"},
                         },
+                    },
+                    "performance_tuning": {
+                        "type": "object",
+                        "description": (
+                            "REQUIRED — include in every recommendation. "
+                            "Infer the 1-2 most important performance metrics from the user's domain "
+                            "(e.g. medical/legal → Recall; real-time UI / recommendation → Latency; high-traffic API use case → QPS). "
+                            "Name them explicitly and give concrete tuning knobs. Never omit this field."
+                        ),
+                        "properties": {
+                            "domain_inference": {
+                                "type": "string",
+                                "description": (
+                                    "1-2 sentences on what the use case implies about performance priorities "
+                                    "and why. E.g. 'This is a medical retrieval system — missing a relevant "
+                                    "result has patient-safety implications, so Recall is the top priority.'"
+                                ),
+                            },
+                            "priorities": {
+                                "type": "array",
+                                "description": "1-2 entries for the most important metrics, ordered by priority.",
+                                "items": {
+                                    "type": "object",
+                                    "properties": {
+                                        "metric": {"type": "string", "enum": ["Recall", "Latency", "QPS"]},
+                                        "priority_level": {"type": "string", "enum": ["High", "Medium"]},
+                                        "why": {
+                                            "type": "string",
+                                            "description": "One sentence on why this metric matters for this specific case.",
+                                        },
+                                        "knobs": {
+                                            "type": "array",
+                                            "description": "2-3 concrete tuning suggestions.",
+                                            "items": {
+                                                "type": "object",
+                                                "properties": {
+                                                    "parameter": {"type": "string"},
+                                                    "action": {"type": "string"},
+                                                    "scope": {"type": "string", "enum": ["index-time", "query-time"]},
+                                                    "trade_off": {"type": "string"},
+                                                },
+                                                "required": ["parameter", "action", "scope", "trade_off"],
+                                            },
+                                        },
+                                    },
+                                    "required": ["metric", "priority_level", "why", "knobs"],
+                                },
+                            },
+                        },
+                        "required": ["domain_inference", "priorities"],
                     },
                     "next_steps": {
                         "type": "array",

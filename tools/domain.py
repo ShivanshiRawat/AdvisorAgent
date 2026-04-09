@@ -32,43 +32,76 @@ def web_search(query: str, provider=None) -> Tuple[str, list]:
 
 
 def evaluate_index_viability(
-    projected_vector_count: int,
+    current_vector_count: int,
     filter_selectivity_pct: float,
     requires_keyword_search: bool,
+    projected_vector_count: int = 0,
 ) -> str:
     """Evaluate which index types are viable based on scale, selectivity, and
-    keyword search requirements. Returns a deterministic verdict report."""
+    keyword search requirements. Returns a deterministic verdict report.
+
+    CRITICAL: Routing is driven by current_vector_count ONLY.
+    projected_vector_count (if provided) generates a forward-looking NOTE, never a routing change.
+
+    Guard: If current_vector_count seems too large and projected_vector_count is small or zero,
+    assume they were swapped and swap them back.
+    """
+    # Safety guard: if current is much larger than projected, they may be swapped
+    if (projected_vector_count > 0 and current_vector_count > 500_000_000 and 
+        projected_vector_count < current_vector_count / 2):
+        # Likely swapped — correct it
+        current_vector_count, projected_vector_count = projected_vector_count, current_vector_count
+
     report = ["--- VIABILITY REPORT ---"]
     report.append(
-        f"Input: {projected_vector_count:,} vectors (3-year projection), "
-        f"{filter_selectivity_pct}% data remaining after filter, "
+        f"Input: {current_vector_count:,} vectors (CURRENT), "
+        + (f"{projected_vector_count:,} vectors (3-year projection), " if projected_vector_count else "")
+        + f"{filter_selectivity_pct}% data remaining after filter, "
         f"keyword search required: {requires_keyword_search}"
     )
 
-    # Scale + keyword search rule
+    # Scale + keyword search rule — driven by CURRENT scale only
     if requires_keyword_search:
-        if projected_vector_count > 100_000_000:
-            report.append("❌ Search Vector Index (FTS): ELIMINATED — scale exceeds the 100M memory-mapping ceiling.")
+        if current_vector_count > 100_000_000:
+            report.append("❌ Search Vector Index (FTS): ELIMINATED — current scale exceeds the 100M memory-mapping ceiling.")
             report.append("✅ Hybrid Architecture (HVI + FTS): REQUIRED — HVI handles vectors at scale, FTS handles keywords.")
         else:
-            report.append("✅ Search Vector Index (FTS): VIABLE — scale is safely under the 100M ceiling.")
+            report.append("✅ Search Vector Index (FTS): VIABLE — current scale is safely under the 100M ceiling.")
             report.append("⚠️  Hybrid Architecture (HVI + FTS): OVERKILL at this scale — unified FTS is simpler.")
+            # Add growth note if projected scale crosses the threshold
+            if projected_vector_count and projected_vector_count > 100_000_000:
+                report.append(
+                    f"📌 FORWARD-LOOKING NOTE: At {projected_vector_count:,} vectors (your projection), "
+                    "FTS would exceed its 100M ceiling. This is a future consideration only — "
+                    "FTS is optimal today. When/if you approach that threshold in 2–3 years, "
+                    "migrate to HVI (or Hybrid HVI+FTS for keyword search). This is a service-boundary change, "
+                    "so allow lead time. No action needed now."
+                )
     else:
         report.append("ℹ️  Search Vector Index / Hybrid: NOT APPLICABLE (no keyword search required).")
 
-    # Selectivity rule
+    # Selectivity rule — also driven by current scale
     if filter_selectivity_pct < 20:
         recommendation = (
             f"✅ Composite Vector Index (CVI): RECOMMENDED — filter prunes to {filter_selectivity_pct}% of corpus. "
             f"GSI eliminates {100 - filter_selectivity_pct:.0f}% before ANN. "
         )
-        if projected_vector_count >= 1_000_000_000:
+        if current_vector_count >= 1_000_000_000:
             recommendation += "⚠️  CAVEAT: At billion-scale, ensure the full index fits in RAM or consider HVI."
         report.append(recommendation)
         report.append(
             "⚠️  Hyperscale Vector Index (HVI): SUBOPTIMAL at this selectivity — "
             "it scans the full graph when the filter could dramatically shrink the search space."
         )
+        # CVI → HVI growth note
+        if projected_vector_count and projected_vector_count >= 1_000_000_000 and current_vector_count < 1_000_000_000:
+            report.append(
+                f"📌 FORWARD-LOOKING NOTE: At {projected_vector_count:,} vectors (your projection), "
+                "CVI's RAM cost may become prohibitive — this is a future consideration only. "
+                "CVI is optimal today for your selectivity. When/if you approach billion-scale in 2–3 years, "
+                "consider migrating to HVI (same Index Service, similar DDL, same query syntax). "
+                "No action needed now."
+            )
     else:
         report.append(
             f"❌ Composite Vector Index (CVI): ELIMINATED — filter retains {filter_selectivity_pct}% of corpus. "

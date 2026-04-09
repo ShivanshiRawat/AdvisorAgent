@@ -56,7 +56,7 @@ async def on_chat_start():
 
     await cl.Message(
         content=(
-            "### **Welcome to the Couchbase Vector Advisor**\n\n"
+            "### **Welcome to the Couchbase Vector Index Advisor**\n\n"
             "I am here to help you find the most efficient and cost-effective way to build search into your application. "
             "Whether you are just starting out, preparing for massive growth, or simply have questions about Couchbase "
             "vector indexes, I can guide you to the right setup for your needs.\n\n"
@@ -423,6 +423,29 @@ async def _show_recommendation(payload: Dict[str, Any]):
             parts.append(f"- **Shared indexes:** {arch['shared_indexes']}")
         if arch.get("operational_notes"):
             parts.append(f"- **Operational notes:** {arch['operational_notes']}")
+
+    pt = payload.get("performance_tuning", {})
+    if pt:
+        parts.append("\n---\n### Performance Tuning Guidance")
+        if pt.get("domain_inference"):
+            parts.append(f"> {pt['domain_inference']}\n")
+        for priority in pt.get("priorities", []):
+            metric = priority.get("metric", "")
+            level = priority.get("priority_level", "")
+            why = priority.get("why", "")
+            badge = "🔴" if level == "High" else "🟡"
+            parts.append(f"**{badge} {metric}** — {level} Priority")
+            if why:
+                parts.append(f"_{why}_\n")
+            knobs = priority.get("knobs", [])
+            if knobs:
+                for k in knobs:
+                    param     = k.get("parameter", "")
+                    action    = k.get("action", "")
+                    scope     = k.get("scope", "")
+                    trade_off = k.get("trade_off", "")
+                    parts.append(f"- Consider **{action} `{param}`** _{scope}_ → {trade_off}")
+            parts.append("")
 
     next_steps = payload.get("next_steps", [])
     if next_steps:
