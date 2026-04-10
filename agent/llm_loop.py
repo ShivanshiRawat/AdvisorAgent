@@ -99,7 +99,9 @@ def run_llm_turn(
                     "Your previous response was empty or malformed.\n"
                     "Here is the understanding so far:\n\n"
                     f"```json\n{json.dumps(_build_recovery_context(session), indent=2, default=str)}\n```\n\n"
-                    "Immediately call `ask_user` or `give_recommendation`."
+                    "If you are presenting a tool result (e.g. benchmark baseline), respond with plain text. "
+                    "Otherwise call `ask_user` if information is missing, or `give_recommendation` only if "
+                    "you are delivering an initial index recommendation for the first time."
                 )
                 try:
                     retry = provider.send_message(chat, recovery_prompt)
@@ -210,7 +212,9 @@ def run_llm_turn(
                     "There was a temporary connection issue.\n"
                     "Here is the full understanding so far:\n\n"
                     f"```json\n{json.dumps(_build_recovery_context(session), indent=2, default=str)}\n```\n\n"
-                    "Pick up from this point. Call `ask_user` or `give_recommendation`."
+                    "Pick up from this point. If you are presenting a tool result (e.g. benchmark baseline), "
+                    "respond with plain text. Otherwise call `ask_user` if information is missing, or "
+                    "`give_recommendation` only if delivering an initial index recommendation for the first time."
                 )
                 try:
                     resp = provider.send_message(chat, recovery_prompt)

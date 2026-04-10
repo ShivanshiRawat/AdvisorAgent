@@ -326,7 +326,11 @@ ALL_TOOL_SCHEMAS = [
             "name": "give_recommendation",
             "description": (
                 "TERMINAL TOOL. Deliver the final index recommendation. "
-                "Only call after evaluate_index_viability has returned a verdict."
+                "Only call after evaluate_index_viability has returned a verdict. "
+                "NEVER call this tool to present benchmark baseline results, configuration parameters, "
+                "or the output of find_baseline_configuration — those must always be presented as plain text. "
+                "NEVER call this tool a second time in the same conversation just because the user asked "
+                "for a baseline config or starting parameters after an earlier recommendation was already given."
             ),
             "parameters": {
                 "type": "object",
