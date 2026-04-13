@@ -68,7 +68,10 @@ async def on_chat_start():
             "* **Recommend the best index** for your specific scenario.\n"
             "* **Identify the simplest path** based on your current setup.\n"
             "* **Provide expert answers** to any questions regarding index architecture.\n\n"
-            "Please share your use case or ask a question to begin!"
+            "* **Suggest performance tuning** tips to optimize your chosen index.\n\n"
+            "* **Give a baseline performance profile** to help you set expectations and measure improvements.\n\n"
+            "> ⚠️ Privacy note: Do NOT paste or share personal, sensitive, or confidential data (PII, secrets, passwords, or proprietary documents). Replace such content with placeholders before sharing.\n\n"
+            "Please share your use case or ask a specific question to begin!"
         )
     ).send()
 
