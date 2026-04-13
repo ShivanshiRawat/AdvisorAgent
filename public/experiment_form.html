@@ -1,0 +1,701 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Vector Benchmark – Experiment Job Runner</title>
+  <style>
+    :root {
+      --bg: #f1f5f9;
+      --card-bg: #ffffff;
+      --header-bg: #1e293b;
+      --text-main: #334155;
+      --text-muted: #64748b;
+      --accent: #2563eb;
+      --border: #e2e8f0;
+      --input-bg: #ffffff;
+      --success: #16a34a;
+      --error: #dc2626;
+    }
+
+    * { box-sizing: border-box; }
+    body {
+      font-family: 'Inter', -apple-system, system-ui, sans-serif;
+      background-color: var(--bg);
+      color: var(--text-main);
+      margin: 0;
+      padding: 0;
+      line-height: 1.5;
+    }
+
+    .top-bar {
+      background: var(--header-bg);
+      color: white;
+      padding: 20px 0;
+      margin-bottom: 40px;
+      box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);
+    }
+
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 0 20px;
+    }
+
+    .header-content {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    h1 { margin: 0; font-size: 22px; font-weight: 600; letter-spacing: -0.025em; }
+    .badge {
+      background: rgba(255,255,255,0.1);
+      padding: 4px 12px;
+      border-radius: 4px;
+      font-size: 12px;
+      font-family: monospace;
+    }
+
+    /* Card & Grid System */
+    .card {
+      background: var(--card-bg);
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      padding: 32px;
+      margin-bottom: 32px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.02);
+    }
+
+    .section-header {
+      border-bottom: 1px solid var(--border);
+      margin-bottom: 24px;
+      padding-bottom: 8px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .section-header h2 {
+      font-size: 16px;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--accent);
+      margin: 0;
+    }
+
+    .grid-4 {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 20px;
+      margin-bottom: 20px;
+    }
+
+    .grid-3 {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 20px;
+      margin-bottom: 20px;
+    }
+
+    /* Form Controls */
+    .field {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .field.full-width { grid-column: span 4; }
+    .field.half-width { grid-column: span 2; }
+
+    label {
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text-muted);
+    }
+    .help {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 16px;
+      height: 16px;
+      font-size: 11px;
+      border-radius: 50%;
+      background: #e2e8f0;
+      color: #334155;
+      margin-left: 6px;
+      cursor: help;
+    }
+
+    input, select, textarea {
+      padding: 10px 12px;
+      font-size: 14px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      background: var(--input-bg);
+      color: var(--text-main);
+      width: 100%;
+    }
+
+    input:focus, select:focus {
+      outline: none;
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+    }
+
+    textarea {
+      min-height: 80px;
+      font-family: 'SFMono-Regular', Consolas, monospace;
+      resize: vertical;
+    }
+
+    .muted-text { font-size: 11px; color: var(--text-muted); margin-top: 4px; }
+    .req { color: var(--error); margin-left: 4px; }
+
+    /* Buttons & Actions */
+    .sticky-actions {
+      position: sticky;
+      bottom: 0;
+      background: white;
+      padding: 20px;
+      border-top: 1px solid var(--border);
+      display: flex;
+      gap: 12px;
+      justify-content: flex-end;
+      box-shadow: 0 -10px 15px -3px rgba(0,0,0,0.05);
+      z-index: 100;
+    }
+
+    button {
+      padding: 12px 24px;
+      border-radius: 6px;
+      font-weight: 600;
+      cursor: pointer;
+      font-size: 14px;
+      transition: all 0.2s;
+    }
+
+    .btn-primary { background: var(--accent); color: white; border: none; }
+    .btn-primary:hover { background: #1d4ed8; }
+    .btn-secondary { background: white; border: 1px solid var(--border); color: var(--text-main); }
+    .btn-secondary:hover { background: #f8fafc; }
+
+    /* Collapsible */
+    details { border: 1px solid var(--border); border-radius: 8px; padding: 16px; margin-top: 10px;}
+    summary { font-weight: 700; cursor: pointer; color: var(--text-main); padding-bottom: 10px; }
+
+    .status {
+      padding: 16px;
+      border-radius: 8px;
+      margin-top: 20px;
+      font-size: 14px;
+      display: none;
+    }
+    .status.active { display: block; }
+    .status.success { background: #f0fdf4; border: 1px solid #bbf7d0; color: #166534; }
+    .status.error { background: #fef2f2; border: 1px solid #fecaca; color: #991b1b; }
+
+    pre {
+      background: #1e293b;
+      color: #cbd5e1;
+      padding: 20px;
+      border-radius: 8px;
+      font-size: 13px;
+      overflow-x: auto;
+    }
+
+    @media (max-width: 900px) {
+      .grid-4, .grid-3 { grid-template-columns: repeat(2, 1fr); }
+      .field.full-width, .field.half-width { grid-column: span 2; }
+    }
+  </style>
+</head>
+<body>
+
+  <div class="top-bar">
+    <div class="container header-content">
+      <div>
+        <h1>Vector Benchmark</h1>
+        <div style="font-size: 13px; opacity: 0.8; margin-top: 4px;">Job Configuration & Execution Runner</div>
+      </div>
+      <!-- <span class="badge">FastAPI v0.1.0</span> -->
+    </div>
+  </div>
+
+  <div class="container">
+    <form id="job-form">
+      
+      <div class="card">
+        <div class="section-header"><h2>Environment</h2></div>
+        <div class="grid-4">
+          <div class="field full-width">
+            <label>FastAPI Base URL<span class="req">*</span><span class="help" title="FastAPI base URL used to call POST /jobs.">?</span></label>
+            <input id="api_base_url" type="text" value="http://127.0.0.1:8001" required />
+            <div class="muted-text">Target: <code>POST /jobs</code></div>
+          </div>
+          <div class="field">
+            <label>Config Template<span class="help" title="Base config file path used to generate per-job config.">?</span></label>
+            <input id="config_template_path" type="text" value="config.ini" />
+          </div>
+          <div class="field">
+            <label>Go Binary<span class="help" title="Path to vector_bench executable.">?</span></label>
+            <input id="go_binary" type="text" value="./vector_bench" />
+          </div>
+          <div class="field">
+            <label>Python Executable<span class="help" title="Python interpreter path used to run optuna_tuner.py.">?</span></label>
+            <input id="python_executable" type="text" value="/usr/bin/python3" />
+          </div>
+          <div class="field">
+            <label>Run Label<span class="help" title="Friendly name for the submitted job.">?</span></label>
+            <input id="label" type="text" />
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="section-header"><h2>Storage & Dataset</h2></div>
+        <div class="grid-3">
+          <div class="field"><label>Connection String<span class="req">*</span><span class="help" title="Couchbase cluster connection URI.">?</span></label><input id="connection_string" type="text" required /></div>
+          <div class="field"><label>Username<span class="req">*</span><span class="help" title="Couchbase username.">?</span></label><input id="username" type="text" required /></div>
+          <div class="field"><label>Password<span class="req">*</span><span class="help" title="Couchbase password.">?</span></label><input id="password" type="password" required /></div>
+        </div>
+        <div class="grid-3">
+          <div class="field"><label>Bucket<span class="req">*</span><span class="help" title="Target bucket name.">?</span></label><input id="bucket" type="text" value="vector-bench" required /></div>
+          <div class="field"><label>Scope<span class="req">*</span><span class="help" title="Target scope name.">?</span></label><input id="scope" type="text" value="_default" required /></div>
+          <div class="field"><label>Collection<span class="req">*</span><span class="help" title="Target collection name.">?</span></label><input id="collection" type="text" value="_default" required /></div>
+        </div>
+        <div class="grid-3" style="margin-top: 30px;">
+          <div class="field"><label>Data Path<span class="help" title="Base vectors .fvecs path (local or s3://).">?</span></label><input id="data_path" type="text" /></div>
+          <div class="field"><label>Query Vectors Path<span class="req">*</span><span class="help" title="Query vectors .fvecs path.">?</span></label><input id="query_vectors_path" type="text" required /></div>
+          <div class="field"><label>Ground Truth Path<span class="req">*</span><span class="help" title="Ground-truth .ivecs path.">?</span></label><input id="ground_truth_path" type="text" required /></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="section-header"><h2>Dataset S3 (optional)</h2></div>
+        <div class="grid-4">
+          <div class="field"><label>Region<span class="help" title="AWS region for dataset S3 access.">?</span></label><input id="dataset_s3_region" type="text" /></div>
+          <div class="field"><label>Profile<span class="help" title="AWS profile name for dataset S3 auth.">?</span></label><input id="dataset_s3_profile" type="text" /></div>
+          <div class="field"><label>Access Key ID<span class="help" title="Access key for dataset S3.">?</span></label><input id="dataset_s3_access_key_id" type="text" /></div>
+        </div>
+        <div class="grid-4">
+          <div class="field"><label>Secret Access Key<span class="help" title="Secret key for dataset S3.">?</span></label><input id="dataset_s3_secret_access_key" type="password" /></div>
+          <div class="field"><label>Session Token<span class="help" title="Session token for temporary dataset S3 creds.">?</span></label><input id="dataset_s3_session_token" type="text" /></div>
+          <div class="field"><label>Use Path Style<span class="help" title="Enable path-style addressing for S3-compatible stores.">?</span></label>
+            <select id="dataset_s3_use_path_style"><option value="true">true</option><option value="false" selected>false</option></select>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="section-header"><h2>Indexing Strategy</h2></div>
+        <div class="grid-4">
+          <div class="field">
+            <label>Index Type<span class="help" title="Index mode (hyperscale or composite).">?</span></label>
+            <select id="index_type">
+              <option value="hyperscale" selected>Hyperscale</option>
+              <option value="composite">Composite</option>
+            </select>
+          </div>
+          <div class="field"><label>Index Name<span class="req">*</span><span class="help" title="Name of index to create/drop.">?</span></label><input id="index_name" type="text" required /></div>
+          <div class="field"><label>Vector Field<span class="req">*</span><span class="help" title="Document field containing embedding vector.">?</span></label><input id="vector_field" type="text" required /></div>
+          <div class="field">
+            <label>Similarity<span class="help" title="Distance metric (e.g., L2, COSINE).">?</span></label>
+            <select id="similarity">
+              <option value="L2">L2</option>
+              <option value="COSINE">COSINE</option>
+              <option value="DOT">DOT</option>
+              <option value="L2_SQUARED" selected>L2_SQUARED</option>
+            </select>
+          </div>
+        </div>
+        <div class="grid-3">
+          <div class="field"><label>Scalar Fields<span class="help" title="Comma-separated scalar fields for partition/composite keys.">?</span></label><input id="scalar_fields" type="text" placeholder="field1,field2" /></div>
+          <div class="field"><label>Include Fields<span class="help" title="Comma-separated include fields (hyperscale only).">?</span></label><input id="include_fields" type="text" /></div>
+          <div class="field"><label>Where Clause<span class="help" title="Optional index build filter predicate.">?</span></label><input id="index_where_clause" type="text" /></div>
+        </div>
+        <div class="grid-4" style="margin-top: 20px;">
+          <div class="field"><label>Dimension<span class="req">*</span><span class="help" title="Vector dimension.">?</span></label><input id="dimension" type="number" required /></div>
+          <div class="field"><label>N-List<span class="help" title="IVF centroid count.">?</span></label><input id="nlist" type="number" value="1024" /></div>
+          <div class="field"><label>Train List<span class="help" title="Number of vectors used for training.">?</span></label><input id="train_list" type="number" value="100000" /></div>
+          <div class="field">
+            <label>Persist Full Vector<span class="help" title="Store full vectors to allow reranking.">?</span></label>
+            <select id="persist_full_vector">
+              <option value="true">True</option>
+              <option value="false">False</option>
+            </select>
+          </div>
+        </div>
+        <div class="grid-4">
+          <div class="field"><label>Num Replicas<span class="help" title="Number of index replicas.">?</span></label><input id="num_replica" type="number" value="0" /></div>
+          <div class="field"><label>Defer Build<span class="help" title="Defer index build flag (if supported by backend).">?</span></label>
+            <select id="defer_build"><option value="true">true</option><option value="false" selected>false</option></select>
+          </div>
+          <div class="field full-width"><label>Description<span class="help" title="Index descriptor string (e.g., IVF1024,SQ8).">?</span></label><input id="description" type="text" value="IVF,SQ8" /></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="section-header"><h2>Execution & Load</h2></div>
+        <div class="grid-4">
+          <div class="field"><label>Top K<span class="req">*</span><span class="help" title="Number of nearest neighbors to return.">?</span></label><input id="top_k" type="number" value="10" required /></div>
+          <div class="field"><label>N-Probes<span class="req">*</span><span class="help" title="IVF probe count at query time.">?</span></label><input id="nprobes" type="number" value="16" required /></div>
+          <div class="field">
+            <label>Reranking<span class="help" title="Enable reranking stage.">?</span></label>
+            <select id="reranking">
+              <option value="true">Enabled</option>
+              <option value="false">Disabled</option>
+            </select>
+          </div>
+          <div class="field" id="top_n_scan_wrap"><label>Top N Scan<span class="help" title="Candidate count scanned during reranking.">?</span></label><input id="top_n_scan" type="number" value="100" /></div>
+        </div>
+        <div class="grid-4" style="margin-top:20px;">
+          <div class="field"><label>Warmup (sec)<span class="req">*</span><span class="help" title="Warmup duration before measurement.">?</span></label><input id="warmup_seconds" type="number" value="30" required /></div>
+          <div class="field"><label>Steady State (sec)<span class="req">*</span><span class="help" title="Measurement duration.">?</span></label><input id="steady_state_seconds" type="number" value="120" required /></div>
+          <div class="field"><label>Workers<span class="req">*</span><span class="help" title="Parallel query worker count.">?</span></label><input id="workers" type="number" value="16" required /></div>
+          <div class="field"><label>Timeout (ms)<span class="req">*</span><span class="help" title="Timeout per query request.">?</span></label><input id="query_timeout_ms" type="number" value="10000" required /></div>
+        </div>
+        
+        <div class="grid-4" style="margin-top: 20px; border-top: 1px dashed var(--border); padding-top: 20px;">
+          <div class="field">
+            <label>Skip Load<span class="help" title="Skip loading base vectors into collection.">?</span></label>
+            <select id="skip_load"><option value="false">False</option><option value="true">True</option></select>
+          </div>
+          <div class="field">
+            <label>Skip Index<span class="help" title="Skip index creation/build step.">?</span></label>
+            <select id="skip_index"><option value="false">False</option><option value="true">True</option></select>
+          </div>
+          <div class="field"><label>Batch Size<span class="help" title="Batch size for bulk upsert.">?</span></label><input id="load_batch_size" type="number" value="100" /></div>
+          <div class="field"><label>Load Workers<span class="help" title="Parallel load worker count.">?</span></label><input id="load_workers" type="number" value="16" /></div>
+        </div>
+        
+        <div class="grid-4">
+          <div class="field"><label>Doc ID Prefix<span class="req">*</span><span class="help" title="Prefix for generated document IDs.">?</span></label><input id="doc_id_prefix" type="text" value="vec" required /></div>
+          <div class="field"><label>Scalar Modulo<span class="help" title="Modulo base for generated scalar values.">?</span></label><input id="scalar_modulo" type="number" value="0" /></div>
+          <div class="field half-width"><label>Query Where Clause<span class="help" title="Query-time filter predicate.">?</span></label><input id="query_where_clause" type="text" /></div>
+        </div>
+
+        <div class="grid-row" style="margin-top: 15px;">
+           <div class="field"><label>Named Params (JSON)<span class="req">*</span><span class="help" title="JSON string of named params used by where_clause.">?</span></label><textarea id="named_params_json" required>{}</textarea></div>
+           <div class="field" style="margin-top: 10px;"><label>Static Fields (JSON)<span class="req">*</span><span class="help" title="JSON string of constant scalar fields to add per document.">?</span></label><textarea id="static_fields_json" required>{}</textarea></div>
+           <div class="field" style="margin-top: 10px;"><label>Loading Scalar Field<span class="help" title="Scalar field name for generated modulo value.">?</span></label><input id="loading_scalar_field" type="text" /></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <details>
+          <summary>Advanced Optimization (Optuna & Tuning)</summary>
+          <div class="grid-4" style="margin-top: 15px;">
+            <div class="field"><label>N-Index Trials<span class="help" title="Override outer Optuna trial count from CLI.">?</span></label><input id="n_index_trials" type="number"  /></div>
+            <div class="field"><label>N-Query Trials<span class="help" title="Override inner Optuna trial count from CLI.">?</span></label><input id="n_query_trials" type="number"  /></div>
+            <div class="field half-width"><label>Extra Args (CSV)<span class="help" title="Extra raw CLI args forwarded to optuna_tuner.py.">?</span></label><input id="extra_args" type="text" placeholder="--flag1,--flag2" /></div>
+          </div>
+          
+          <h4 style="font-size: 13px; color: var(--accent); margin: 20px 0 10px;">Optuna Objectives</h4>
+          <div class="grid-4">
+            <div class="field"><label>Objectives<span class="help" title="Comma-separated optimization targets.">?</span></label><input id="objectives" type="text" value="recall, qps, latency_p99" /></div>
+            <div class="field"><label>Recall Dir<span class="help" title="Optimize recall direction (maximize|minimize).">?</span></label><input id="recall_direction" type="text" value="maximize" /></div>
+            <div class="field"><label>QPS Dir<span class="help" title="Optimize QPS direction.">?</span></label><input id="qps_direction" type="text" value="maximize" /></div>
+            <div class="field"><label>Latency Dir<span class="help" title="Optimize p99 latency direction.">?</span></label><input id="latency_p99_direction" type="text" value="minimize" /></div>
+          </div>
+          <div class="grid-4">
+            <div class="field"><label>Outer Sampler<span class="help" title="Sampler for outer study.">?</span></label><input id="outer_sampler" type="text" /></div>
+            <div class="field"><label>Inner Sampler<span class="help" title="Sampler for inner study.">?</span></label><input id="inner_sampler" type="text" /></div>
+          </div>
+
+          <h4 style="font-size: 13px; color: var(--accent); margin: 20px 0 10px;">Search Space (Min/Max/Step)</h4>
+          <div class="grid-4">
+            <div class="field"><label>N-List Min<span class="help" title="Minimum nlist for search space.">?</span></label><input id="nlist_min" type="number" /></div>
+            <div class="field"><label>N-List Max<span class="help" title="Maximum nlist for search space.">?</span></label><input id="nlist_max" type="number" /></div>
+            <div class="field"><label>N-List Step<span class="help" title="Step size for nlist.">?</span></label><input id="nlist_step" type="number" /></div>
+            <div class="field">
+              <label>Resume<span class="help" title="Resume existing Optuna study DB if present.">?</span></label>
+              <select id="resume"><option value="false">false</option><option value="true">true</option></select>
+            </div>
+          </div>
+          <div class="grid-4">
+            <div class="field"><label>Train Min<span class="help" title="Minimum train_list.">?</span></label><input id="train_list_min" type="number" /></div>
+            <div class="field"><label>Train Max<span class="help" title="Maximum train_list.">?</span></label><input id="train_list_max" type="number" /></div>
+            <div class="field"><label>Train Step<span class="help" title="Step size for train_list.">?</span></label><input id="train_list_step" type="number" /></div>
+            <div class="field"><label>Quantization Choices<span class="help" title="Comma-separated quantization options.">?</span></label><input id="quantization_choices" type="text" placeholder="SQ8, SQ4" /></div>
+          </div>
+          <div class="grid-4">
+            <div class="field"><label>N-Probes Min<span class="help" title="Minimum nprobes.">?</span></label><input id="nprobes_min" type="number" /></div>
+            <div class="field"><label>N-Probes Max<span class="help" title="Maximum nprobes.">?</span></label><input id="nprobes_max" type="number" /></div>
+            <div class="field"><label>N-Probes Step<span class="help" title="Step size for nprobes.">?</span></label><input id="nprobes_step" type="number" /></div>
+            <div class="field"><label>persist_full_vector Choices<span class="help" title="Comma-separated boolean choices.">?</span></label><input id="persist_full_vector_choices" type="text" /></div>
+          </div>
+          <div class="grid-4">
+            <div class="field"><label>Top N Scan Min<span class="help" title="Minimum top_n_scan.">?</span></label><input id="top_n_scan_min" type="number" /></div>
+            <div class="field"><label>Top N Scan Max<span class="help" title="Maximum top_n_scan.">?</span></label><input id="top_n_scan_max" type="number" /></div>
+            <div class="field"><label>Top N Scan Step<span class="help" title="Step size for top_n_scan.">?</span></label><input id="top_n_scan_step" type="number" /></div>
+          </div>
+        </details>
+      </div>
+
+
+      <div class="card">
+        <div class="section-header"><h2>Results S3 (optional)</h2></div>
+        <div class="grid-4">
+          <div class="field"><label>enabled<span class="help" title="Enable uploading output artifacts to S3.">?</span></label>
+            <select id="results_s3_enabled"><option value="true">true</option><option value="false" selected>false</option></select>
+          </div>
+          <div class="field"><label>bucket<span class="help" title="Destination S3 bucket for artifacts.">?</span></label><input id="results_s3_bucket" type="text" /></div>
+          <div class="field"><label>prefix<span class="help" title="Key prefix/folder for uploaded artifacts.">?</span></label><input id="results_s3_prefix" type="text" /></div>
+          <div class="field"><label>region<span class="help" title="AWS region for results S3.">?</span></label><input id="results_s3_region" type="text" /></div>
+        </div>
+        <div class="grid-4">
+          <div class="field"><label>profile<span class="help" title="AWS profile for results S3 auth.">?</span></label><input id="results_s3_profile" type="text" /></div>
+          <div class="field"><label>access_key_id<span class="help" title="Access key for results S3.">?</span></label><input id="results_s3_access_key_id" type="text" /></div>
+          <div class="field"><label>secret_access_key<span class="help" title="Secret key for results S3.">?</span></label><input id="results_s3_secret_access_key" type="password" /></div>
+        </div>
+        <div class="grid-4">
+          <div class="field"><label>session_token<span class="help" title="Session token for temporary results S3 creds.">?</span></label><input id="results_s3_session_token" type="text" /></div>
+          <div class="field"><label>use_path_style<span class="help" title="Path-style S3 addressing for compatible endpoints.">?</span></label>
+            <select id="results_s3_use_path_style"><option value="">(unset)</option><option value="true">true</option><option value="false">false</option></select>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="section-header"><h2>Tuner Output</h2></div>
+        <div class="grid-4">
+          <div class="field"><label>trial_log<span class="help" title="JSONL path for per-trial records.">?</span></label><input id="tuner_trial_log" type="text" value="trial_results.jsonl" /></div>
+          <div class="field"><label>pareto_report<span class="help" title="JSON path for final Pareto report.">?</span></label><input id="tuner_pareto_report" type="text" value="pareto_report.json" /></div>
+          <div class="field"><label>index_cache<span class="help" title="Path for index-cache metadata.">?</span></label><input id="tuner_index_cache" type="text" value="index_cache.json" /></div>
+          <div class="field"><label>optuna_storage<span class="help" title="Path for Optuna SQLite storage DB.">?</span></label><input id="tuner_optuna_storage" type="text" value="optuna_study.db" /></div>
+        </div>
+      </div>
+
+      <div id="status" class="status"></div>
+      <pre id="preview" style="display:none; margin-bottom: 40px;"></pre>
+
+      <div class="sticky-actions">
+        <button type="button" class="btn-secondary" id="preview-btn">Preview JSON</button>
+        <button type="submit" class="btn-primary">Create Experiment Job</button>
+      </div>
+    </form>
+  </div>
+
+  <script>
+    // All original functional logic retained and mapped to the new IDs
+    const byId = (id) => document.getElementById(id);
+    const apiBaseInput = byId("api_base_url");
+    const indexTypeSelect = byId("index_type");
+    const topNScanWrap = byId("top_n_scan_wrap");
+    const statusEl = byId("status");
+    const previewEl = byId("preview");
+
+    function normalizeBase(url) { return (url || "").trim().replace(/\/+$/, ""); }
+    function getValue(id) {
+      const el = byId(id);
+      if (!el) return "";
+      return (el.value || "").trim();
+    }
+    function getInt(id) { 
+      const raw = getValue(id);
+      if (!raw) return null;
+      const val = parseInt(raw, 10); 
+      return Number.isFinite(val) ? val : null; 
+    }
+    function getBool(id) { return getValue(id) === "true"; }
+    function getList(id) {
+      const raw = getValue(id);
+      return raw ? raw.split(",").map(s => s.trim()).filter(Boolean) : [];
+    }
+    function hasAny(obj) { return Object.values(obj).some(v => v !== null && v !== ""); }
+
+    function buildPayload() {
+      const payload = {
+        config_template_path: getValue("config_template_path"),
+        go_binary: getValue("go_binary"),
+        python_executable: getValue("python_executable"),
+        resume: getBool("resume"),
+        label: getValue("label"),
+      };
+
+      const nIndex = getInt("n_index_trials"); if (nIndex) payload.n_index_trials = nIndex;
+      const nQuery = getInt("n_query_trials"); if (nQuery) payload.n_query_trials = nQuery;
+      const extraArgs = getList("extra_args"); if (extraArgs.length) payload.extra_args = extraArgs;
+
+      payload.config_overrides = {
+        connection: {
+          connection_string: getValue("connection_string"),
+          username: getValue("username"),
+          password: getValue("password"),
+          bucket: getValue("bucket"),
+          scope: getValue("scope"),
+          collection: getValue("collection"),
+        },
+        dataset: {
+          data_path: getValue("data_path"),
+          query_vectors_path: getValue("query_vectors_path"),
+          ground_truth_path: getValue("ground_truth_path"),
+        },
+        s3: {
+          region: getValue("dataset_s3_region"),
+          profile: getValue("dataset_s3_profile"),
+          endpoint: getValue("dataset_s3_endpoint"),
+          access_key_id: getValue("dataset_s3_access_key_id"),
+          secret_access_key: getValue("dataset_s3_secret_access_key"),
+          session_token: getValue("dataset_s3_session_token"),
+          use_path_style: getValue("dataset_s3_use_path_style"),
+        },
+        index: {
+          index_type: getValue("index_type"),
+          index_name: getValue("index_name"),
+          vector_field: getValue("vector_field"),
+          scalar_fields: getValue("scalar_fields"),
+          include_fields: getValue("include_fields"),
+          where_clause: getValue("index_where_clause"),
+        },
+        index_creation: {
+          dimension: getInt("dimension"),
+          similarity: getValue("similarity"),
+          description: getValue("description"),
+          nlist: getInt("nlist"),
+          train_list: getInt("train_list"),
+          num_replica: getInt("num_replica"),
+          persist_full_vector: getBool("persist_full_vector"),
+          defer_build: getValue("defer_build"),
+        },
+        query: {
+          top_k: getInt("top_k"),
+          nprobes: getInt("nprobes"),
+          reranking: getBool("reranking"),
+          where_clause: getValue("query_where_clause"),
+          named_params_json: getValue("named_params_json"),
+        },
+        benchmark: {
+          warmup_seconds: getInt("warmup_seconds"),
+          steady_state_seconds: getInt("steady_state_seconds"),
+          workers: getInt("workers"),
+          query_timeout_ms: getInt("query_timeout_ms"),
+        },
+        loading: {
+          skip_load: getBool("skip_load"),
+          skip_index: getBool("skip_index"),
+          load_batch_size: getInt("load_batch_size"),
+          load_workers: getInt("load_workers"),
+          doc_id_prefix: getValue("doc_id_prefix"),
+          static_fields_json: getValue("static_fields_json"),
+          scalar_field: getValue("loading_scalar_field") || "", // Map to your original logic
+          scalar_modulo: getInt("scalar_modulo"),
+        },
+        optuna: {
+          objectives: getValue("objectives"),
+          recall_direction: getValue("recall_direction"),
+          qps_direction: getValue("qps_direction"),
+          latency_p99_direction: getValue("latency_p99_direction"),
+          outer_sampler: getValue("outer_sampler"),
+          inner_sampler: getValue("inner_sampler"),
+        },
+      };
+
+      if (getValue("index_type") === "hyperscale") {
+        payload.config_overrides.query.top_n_scan = getInt("top_n_scan");
+      }
+
+      const indexParams = {
+        nlist_min: getInt("nlist_min"), nlist_max: getInt("nlist_max"), nlist_step: getInt("nlist_step"),
+        train_list_min: getInt("train_list_min"), train_list_max: getInt("train_list_max"), train_list_step: getInt("train_list_step"),
+        quantization_choices: getValue("quantization_choices"), persist_full_vector_choices: getValue("persist_full_vector_choices"),
+      };
+      if (hasAny(indexParams)) payload.config_overrides.index_params = indexParams;
+
+      const queryParams = {
+        nprobes_min: getInt("nprobes_min"), nprobes_max: getInt("nprobes_max"), nprobes_step: getInt("nprobes_step"),
+        top_n_scan_min: getInt("top_n_scan_min"), top_n_scan_max: getInt("top_n_scan_max"), top_n_scan_step: getInt("top_n_scan_step"),
+      };
+      if (hasAny(queryParams)) payload.config_overrides.query_params = queryParams;
+
+      const output = { output_json: getValue("output_json") };
+      if (hasAny(output)) payload.config_overrides.output = output;
+
+      const resultsS3 = {
+        enabled: getValue("results_s3_enabled"),
+        bucket: getValue("results_s3_bucket"),
+        prefix: getValue("results_s3_prefix"),
+        region: getValue("results_s3_region"),
+        profile: getValue("results_s3_profile"),
+        endpoint: getValue("results_s3_endpoint"),
+        access_key_id: getValue("results_s3_access_key_id"),
+        secret_access_key: getValue("results_s3_secret_access_key"),
+        session_token: getValue("results_s3_session_token"),
+        use_path_style: getValue("results_s3_use_path_style"),
+      };
+      if (hasAny(resultsS3)) payload.config_overrides.results_s3 = resultsS3;
+
+      const tunerOutput = {
+        trial_log: getValue("tuner_trial_log"),
+        pareto_report: getValue("tuner_pareto_report"),
+        index_cache: getValue("tuner_index_cache"),
+        optuna_storage: getValue("tuner_optuna_storage"),
+      };
+      if (hasAny(tunerOutput)) payload.config_overrides.tuner_output = tunerOutput;
+
+      return payload;
+    }
+
+    function showStatus(kind, html) {
+      statusEl.className = `status active ${kind}`;
+      statusEl.innerHTML = html;
+    }
+
+    indexTypeSelect.addEventListener("change", () => {
+      topNScanWrap.style.opacity = (indexTypeSelect.value === "hyperscale") ? "1" : "0.3";
+    });
+
+    byId("preview-btn").addEventListener("click", () => {
+      const payload = buildPayload();
+      previewEl.style.display = "block";
+      previewEl.textContent = JSON.stringify(payload, null, 2);
+      previewEl.scrollIntoView({ behavior: 'smooth' });
+    });
+
+    function validateJsonString(label, value) {
+      try {
+        JSON.parse(value);
+        return null;
+      } catch (err) {
+        return `${label} must be valid JSON.`;
+      }
+    }
+
+    byId("job-form").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const baseUrl = normalizeBase(apiBaseInput.value);
+      if (!baseUrl) { showStatus("error", "API Base URL is required"); return; }
+
+      showStatus("success", "Constructing payload and sending to FastAPI...");
+      const jsonErrors = [];
+      const namedParamsErr = validateJsonString("Named Params (JSON)", getValue("named_params_json"));
+      if (namedParamsErr) jsonErrors.push(namedParamsErr);
+      const staticFieldsErr = validateJsonString("Static Fields (JSON)", getValue("static_fields_json"));
+      if (staticFieldsErr) jsonErrors.push(staticFieldsErr);
+      if (jsonErrors.length) {
+        showStatus("error", jsonErrors.join("<br>"));
+        return;
+      }
+
+      const payload = buildPayload();
+
+      try {
+        const res = await fetch(`${baseUrl}/jobs`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          throw new Error(JSON.stringify(data));
+        }
+
+        showStatus("success", `<strong>Job Created!</strong> ID: ${data.job_id} <br> <a href="${baseUrl}/ui/jobs/${data.job_id}" target="_blank">View Live Logs</a>`);
+      } catch (err) {
+        showStatus("error", `Submission Failed: ${err.message}`);
+      }
+    });
+  </script>
+</body>
+</html>

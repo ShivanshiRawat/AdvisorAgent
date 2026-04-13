@@ -21,7 +21,6 @@ import config  # loads .env
 from agent import run_turn
 from storage import save_turn
 
-
 # ---------------------------------------------------------------------------
 # Tool → human-readable label
 # ---------------------------------------------------------------------------
@@ -81,15 +80,42 @@ async def on_chat_start():
         author="System",
     ).send()
 
-
-
 # ---------------------------------------------------------------------------
 # Main message handler
 # ---------------------------------------------------------------------------
 
 @cl.on_message
 async def on_message(message: cl.Message):
+    text = (message.content or "").strip()
+    lowered = text.lower()
+    if _should_trigger_experiment(lowered):
+        await cl.Message(
+            content=(
+                "Here is the experimentation form. "
+                "Open it in a new tab and configure the fields as needed:\n\n"
+                "[Open Experiment Form](/public/experiment_form.html)"
+            )
+        ).send()
+        return
     await _handle(message.content)
+
+
+def _should_trigger_experiment(text: str) -> bool:
+    if not text:
+        return False
+    triggers = (
+        "start experimentation",
+        "start experiment",
+        "start testing",
+        "run experiments",
+        "run experiment",
+        "run testing",
+        "begin experimentation",
+        "begin testing",
+        "/run_experiments",
+        "/experiments",
+    )
+    return any(t in text for t in triggers)
 
 
 async def _handle(user_text: str):
