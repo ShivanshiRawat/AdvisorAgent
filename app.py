@@ -447,6 +447,20 @@ async def _show_recommendation(payload: Dict[str, Any]):
                     parts.append(f"- Consider **{action} `{param}`** _{scope}_ → {trade_off}")
             parts.append("")
 
+    rp = payload.get("retrieval_pipeline", {})
+    if rp:
+        parts.append("\n---\n### 🔄 Retrieval Pipeline Guidance")
+        if rp.get("pipeline_summary"):
+            parts.append(f"> {rp['pipeline_summary']}\n")
+        for opt in rp.get("optimizations", []):
+            concern      = opt.get("concern", "")
+            rec          = opt.get("recommendation", "")
+            trade_off    = opt.get("trade_off", "")
+            parts.append(f"**{concern}**")
+            parts.append(rec)
+            if trade_off:
+                parts.append(f"_Trade-off: {trade_off}_\n")
+
     next_steps = payload.get("next_steps", [])
     if next_steps:
         parts.append("\n---\nWould you like me to:")

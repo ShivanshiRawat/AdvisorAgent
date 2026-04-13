@@ -345,14 +345,32 @@ ALL_TOOL_SCHEMAS = [
                                 "recommended_index": {"type": "string"},
                                 "reasoning": {
                                     "type": "string",
-                                    "description": "Physical reasoning: scale, filter mechanics, RAM constraints.",
+                                    "description": (
+                                        "Physical reasoning grounded in CURRENT scale, filter mechanics, "
+                                        "and RAM constraints. "
+                                        "NEVER include projected or future scale here — future scale "
+                                        "belongs only in caveats."
+                                    ),
                                 },
                                 "eliminated_alternatives": {
                                     "type": "object",
                                     "additionalProperties": {
                                         "type": "string",
-                                        "description": "Why this index was eliminated.",
+                                        "description": (
+                                            "Why this specific index was not chosen. "
+                                            "Base the reason ONLY on current-scale signals (today's scale, "
+                                            "filter selectivity, keyword search need, infrastructure). "
+                                            "Do NOT mention projected/future scale here — that belongs in caveats. "
+                                            "Each entry should explain both why it was eliminated for this user "
+                                            "AND briefly note what situation would make it the right pick."
+                                        ),
                                     },
+                                    "description": (
+                                        "MUST include an entry for EVERY index type that was not recommended. "
+                                        "Always cover all four: HVI, CVI, FTS (Search Vector Index), Hybrid. "
+                                        "Never omit an index type — even if its elimination is obvious. "
+                                        "Reasons must be grounded in current signals, not projected scale."
+                                    ),
                                 },
                                 "caveats": {
                                     "type": "array",
@@ -377,7 +395,14 @@ ALL_TOOL_SCHEMAS = [
                                 "items": {"type": "string"},
                             },
                             "shared_indexes": {"type": "string"},
-                            "operational_notes": {"type": "string"},
+                            "operational_notes": {
+                                "type": "string",
+                                "description": (
+                                    "Describe how the recommended index operates TODAY. "
+                                    "Do NOT include projected scale or future growth here. "
+                                    "Future migration notes belong in caveats."
+                                ),
+                            },
                         },
                     },
                     "performance_tuning": {
@@ -429,6 +454,52 @@ ALL_TOOL_SCHEMAS = [
                             },
                         },
                         "required": ["domain_inference", "priorities"],
+                    },
+                    "retrieval_pipeline": {
+                        "type": "object",
+                        "description": (
+                            "Include ONLY when the user's application has an external LLM or model-based "
+                            "reranking step after Couchbase retrieval (e.g. RAG pipeline, cross-encoder, "
+                            "LLM scoring pass). When present, this section is as important as the index "
+                            "choice itself. Omit this field entirely if no external reranker is present. "
+                            "MUST: If `update_state` records `has_external_reranker=true`, the agent MUST populate this field in the `give_recommendation` output — do not omit it."
+                        ),
+                        "properties": {
+                            "pipeline_summary": {
+                                "type": "string",
+                                "description": (
+                                    "1-2 sentences describing the two-stage flow: what Couchbase retrieves "
+                                    "and what the external LLM/reranker does with those candidates."
+                                ),
+                            },
+                            "optimizations": {
+                                "type": "array",
+                                "description": "2-4 concrete pipeline-level tuning recommendations.",
+                                "items": {
+                                    "type": "object",
+                                    "properties": {
+                                        "concern": {
+                                            "type": "string",
+                                            "description": (
+                                                "The aspect being optimized. E.g. 'Candidate Pool Size (top_k)', "
+                                                "'Payload / Token Count', 'First-Stage Recall (nProbes)', "
+                                                "'Rerank Set Limit'."
+                                            ),
+                                        },
+                                        "recommendation": {
+                                            "type": "string",
+                                            "description": "Concrete, actionable suggestion.",
+                                        },
+                                        "trade_off": {
+                                            "type": "string",
+                                            "description": "The cost or risk of applying this optimization.",
+                                        },
+                                    },
+                                    "required": ["concern", "recommendation", "trade_off"],
+                                },
+                            },
+                        },
+                        "required": ["pipeline_summary", "optimizations"],
                     },
                     "next_steps": {
                         "type": "array",

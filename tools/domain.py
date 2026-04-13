@@ -60,6 +60,10 @@ def evaluate_index_viability(
         f"keyword search required: {requires_keyword_search}"
     )
 
+    if current_vector_count < 50_000_000 and projected_vector_count > 100_000_000:
+        report.append("❌ Hypercale(HVI): ELIMINATED for current scale, but projected scale exceeds its 100M+ suitability range. Recommend FTS now, but plan to migrate to HVI before reaching 100M.")
+        report.append("✅ FTS Search, Composite CVI are viable at this scale.")
+
     # Scale + keyword search rule — driven by CURRENT scale only
     if requires_keyword_search:
         if current_vector_count > 100_000_000:
@@ -78,7 +82,8 @@ def evaluate_index_viability(
                     "so allow lead time. No action needed now."
                 )
     else:
-        report.append("ℹ️  Search Vector Index / Hybrid: NOT APPLICABLE (no keyword search required).")
+
+        report.append("Hybrid: NOT APPLICABLE (no keyword search required).")
 
     # Selectivity rule — also driven by current scale
     if filter_selectivity_pct < 20:
@@ -107,10 +112,11 @@ def evaluate_index_viability(
             f"❌ Composite Vector Index (CVI): ELIMINATED — filter retains {filter_selectivity_pct}% of corpus. "
             "The GSI pre-filter provides minimal reduction, wasting RAM for little gain."
         )
-        report.append(
-            "✅ Hyperscale Vector Index (HVI): VIABLE — designed for broad, low-selectivity searches "
-            "at massive scale with a 2% DGM disk-centric model."
-        )
+        if current_vector_count > 50_000_000:
+            report.append(
+                "✅ Hyperscale Vector Index (HVI): VIABLE — designed for broad, low-selectivity searches "
+                "at massive scale with a 2% DGM disk-centric model."
+            )
     return "\n".join(report)
 
 
