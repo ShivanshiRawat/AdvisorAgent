@@ -98,6 +98,19 @@
       margin-bottom: 20px;
     }
 
+    .grid-2 {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 20px;
+      margin-bottom: 20px;
+    }
+    .grid-row {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 12px;
+      margin-bottom: 20px;
+    }
+
     /* Form Controls */
     .field {
       display: flex;
@@ -233,22 +246,6 @@
             <input id="api_base_url" type="text" value="http://127.0.0.1:8001" required />
             <div class="muted-text">Target: <code>POST /jobs</code></div>
           </div>
-          <div class="field">
-            <label>Config Template<span class="help" title="Base config file path used to generate per-job config.">?</span></label>
-            <input id="config_template_path" type="text" value="config.ini" />
-          </div>
-          <div class="field">
-            <label>Go Binary<span class="help" title="Path to vector_bench executable.">?</span></label>
-            <input id="go_binary" type="text" value="./vector_bench" />
-          </div>
-          <div class="field">
-            <label>Python Executable<span class="help" title="Python interpreter path used to run optuna_tuner.py.">?</span></label>
-            <input id="python_executable" type="text" value="/usr/bin/python3" />
-          </div>
-          <div class="field">
-            <label>Run Label<span class="help" title="Friendly name for the submitted job.">?</span></label>
-            <input id="label" type="text" />
-          </div>
         </div>
       </div>
 
@@ -266,24 +263,17 @@
         </div>
         <div class="grid-3" style="margin-top: 30px;">
           <div class="field"><label>Data Path<span class="help" title="Base vectors .fvecs path (local or s3://).">?</span></label><input id="data_path" type="text" /></div>
-          <div class="field"><label>Query Vectors Path<span class="req">*</span><span class="help" title="Query vectors .fvecs path.">?</span></label><input id="query_vectors_path" type="text" required /></div>
-          <div class="field"><label>Ground Truth Path<span class="req">*</span><span class="help" title="Ground-truth .ivecs path.">?</span></label><input id="ground_truth_path" type="text" required /></div>
+          <div class="field"><label>Query Vectors Path<span class="help" title="Query vectors .fvecs path.">?</span></label><input id="query_vectors_path" type="text" /></div>
+          <div class="field"><label>Ground Truth Path<span class="help" title="Ground-truth .ivecs path.">?</span></label><input id="ground_truth_path" type="text" /></div>
         </div>
       </div>
 
       <div class="card">
         <div class="section-header"><h2>Dataset S3 (optional)</h2></div>
-        <div class="grid-4">
+        <div class="grid-3">
           <div class="field"><label>Region<span class="help" title="AWS region for dataset S3 access.">?</span></label><input id="dataset_s3_region" type="text" /></div>
-          <div class="field"><label>Profile<span class="help" title="AWS profile name for dataset S3 auth.">?</span></label><input id="dataset_s3_profile" type="text" /></div>
           <div class="field"><label>Access Key ID<span class="help" title="Access key for dataset S3.">?</span></label><input id="dataset_s3_access_key_id" type="text" /></div>
-        </div>
-        <div class="grid-4">
           <div class="field"><label>Secret Access Key<span class="help" title="Secret key for dataset S3.">?</span></label><input id="dataset_s3_secret_access_key" type="password" /></div>
-          <div class="field"><label>Session Token<span class="help" title="Session token for temporary dataset S3 creds.">?</span></label><input id="dataset_s3_session_token" type="text" /></div>
-          <div class="field"><label>Use Path Style<span class="help" title="Enable path-style addressing for S3-compatible stores.">?</span></label>
-            <select id="dataset_s3_use_path_style"><option value="true">true</option><option value="false" selected>false</option></select>
-          </div>
         </div>
       </div>
 
@@ -309,15 +299,10 @@
             </select>
           </div>
         </div>
-        <div class="grid-3">
+        <div class="grid-4">
           <div class="field"><label>Scalar Fields<span class="help" title="Comma-separated scalar fields for partition/composite keys.">?</span></label><input id="scalar_fields" type="text" placeholder="field1,field2" /></div>
           <div class="field"><label>Include Fields<span class="help" title="Comma-separated include fields (hyperscale only).">?</span></label><input id="include_fields" type="text" /></div>
           <div class="field"><label>Where Clause<span class="help" title="Optional index build filter predicate.">?</span></label><input id="index_where_clause" type="text" /></div>
-        </div>
-        <div class="grid-4" style="margin-top: 20px;">
-          <div class="field"><label>Dimension<span class="req">*</span><span class="help" title="Vector dimension.">?</span></label><input id="dimension" type="number" required /></div>
-          <div class="field"><label>N-List<span class="help" title="IVF centroid count.">?</span></label><input id="nlist" type="number" value="1024" /></div>
-          <div class="field"><label>Train List<span class="help" title="Number of vectors used for training.">?</span></label><input id="train_list" type="number" value="100000" /></div>
           <div class="field">
             <label>Persist Full Vector<span class="help" title="Store full vectors to allow reranking.">?</span></label>
             <select id="persist_full_vector">
@@ -326,12 +311,17 @@
             </select>
           </div>
         </div>
-        <div class="grid-4">
+        <div class="grid-4" style="margin-top: 20px;">
+          <div class="field"><label>Dimension<span class="req">*</span><span class="help" title="Vector dimension.">?</span></label><input id="dimension" type="number" required /></div>
+          <div class="field"><label>N-List<span class="help" title="IVF centroid count.">?</span></label><input id="nlist" type="number" value="1024" /></div>
+          <div class="field"><label>Train List<span class="help" title="Number of vectors used for training.">?</span></label><input id="train_list" type="number" value="100000" /></div>
           <div class="field"><label>Num Replicas<span class="help" title="Number of index replicas.">?</span></label><input id="num_replica" type="number" value="0" /></div>
+        </div>
+        <div class="grid-2" style="margin-top: 20px;">
           <div class="field"><label>Defer Build<span class="help" title="Defer index build flag (if supported by backend).">?</span></label>
             <select id="defer_build"><option value="true">true</option><option value="false" selected>false</option></select>
           </div>
-          <div class="field full-width"><label>Description<span class="help" title="Index descriptor string (e.g., IVF1024,SQ8).">?</span></label><input id="description" type="text" value="IVF,SQ8" /></div>
+          <div class="field"><label>Description<span class="help" title="Index descriptor string (e.g., IVF1024,SQ8).">?</span></label><input id="description" type="text" value="IVF,SQ8" /></div>
         </div>
       </div>
 
@@ -371,14 +361,10 @@
         
         <div class="grid-4">
           <div class="field"><label>Doc ID Prefix<span class="req">*</span><span class="help" title="Prefix for generated document IDs.">?</span></label><input id="doc_id_prefix" type="text" value="vec" required /></div>
-          <div class="field"><label>Scalar Modulo<span class="help" title="Modulo base for generated scalar values.">?</span></label><input id="scalar_modulo" type="number" value="0" /></div>
-          <div class="field half-width"><label>Query Where Clause<span class="help" title="Query-time filter predicate.">?</span></label><input id="query_where_clause" type="text" /></div>
         </div>
 
         <div class="grid-row" style="margin-top: 15px;">
-           <div class="field"><label>Named Params (JSON)<span class="req">*</span><span class="help" title="JSON string of named params used by where_clause.">?</span></label><textarea id="named_params_json" required>{}</textarea></div>
-           <div class="field" style="margin-top: 10px;"><label>Static Fields (JSON)<span class="req">*</span><span class="help" title="JSON string of constant scalar fields to add per document.">?</span></label><textarea id="static_fields_json" required>{}</textarea></div>
-           <div class="field" style="margin-top: 10px;"><label>Loading Scalar Field<span class="help" title="Scalar field name for generated modulo value.">?</span></label><input id="loading_scalar_field" type="text" /></div>
+           <div class="field"><label>Query Where Clause (JSON)<span class="help" title="Query-time filter predicate JSON object.">?</span></label><textarea id="query_where_clause_json">{}</textarea></div>
         </div>
       </div>
 
@@ -386,8 +372,8 @@
         <details>
           <summary>Advanced Optimization (Optuna & Tuning)</summary>
           <div class="grid-4" style="margin-top: 15px;">
-            <div class="field"><label>N-Index Trials<span class="help" title="Override outer Optuna trial count from CLI.">?</span></label><input id="n_index_trials" type="number"  /></div>
-            <div class="field"><label>N-Query Trials<span class="help" title="Override inner Optuna trial count from CLI.">?</span></label><input id="n_query_trials" type="number"  /></div>
+              <div class="field"><label>N-Index Trials<span class="req">*</span><span class="help" title="Override outer Optuna trial count from CLI.">?</span></label><input id="n_index_trials" type="number" required /></div>
+              <div class="field"><label>N-Query Trials<span class="req">*</span><span class="help" title="Override inner Optuna trial count from CLI.">?</span></label><input id="n_query_trials" type="number" required /></div>
             <div class="field half-width"><label>Extra Args (CSV)<span class="help" title="Extra raw CLI args forwarded to optuna_tuner.py.">?</span></label><input id="extra_args" type="text" placeholder="--flag1,--flag2" /></div>
           </div>
           
@@ -436,34 +422,25 @@
 
       <div class="card">
         <div class="section-header"><h2>Results S3 (optional)</h2></div>
-        <div class="grid-4">
+        <div class="grid-3">
           <div class="field"><label>enabled<span class="help" title="Enable uploading output artifacts to S3.">?</span></label>
             <select id="results_s3_enabled"><option value="true">true</option><option value="false" selected>false</option></select>
           </div>
           <div class="field"><label>bucket<span class="help" title="Destination S3 bucket for artifacts.">?</span></label><input id="results_s3_bucket" type="text" /></div>
           <div class="field"><label>prefix<span class="help" title="Key prefix/folder for uploaded artifacts.">?</span></label><input id="results_s3_prefix" type="text" /></div>
-          <div class="field"><label>region<span class="help" title="AWS region for results S3.">?</span></label><input id="results_s3_region" type="text" /></div>
         </div>
-        <div class="grid-4">
-          <div class="field"><label>profile<span class="help" title="AWS profile for results S3 auth.">?</span></label><input id="results_s3_profile" type="text" /></div>
+        <div class="grid-3">
+          <div class="field"><label>region<span class="help" title="AWS region for results S3.">?</span></label><input id="results_s3_region" type="text" /></div>
           <div class="field"><label>access_key_id<span class="help" title="Access key for results S3.">?</span></label><input id="results_s3_access_key_id" type="text" /></div>
           <div class="field"><label>secret_access_key<span class="help" title="Secret key for results S3.">?</span></label><input id="results_s3_secret_access_key" type="password" /></div>
-        </div>
-        <div class="grid-4">
-          <div class="field"><label>session_token<span class="help" title="Session token for temporary results S3 creds.">?</span></label><input id="results_s3_session_token" type="text" /></div>
-          <div class="field"><label>use_path_style<span class="help" title="Path-style S3 addressing for compatible endpoints.">?</span></label>
-            <select id="results_s3_use_path_style"><option value="">(unset)</option><option value="true">true</option><option value="false">false</option></select>
-          </div>
         </div>
       </div>
 
       <div class="card">
         <div class="section-header"><h2>Tuner Output</h2></div>
-        <div class="grid-4">
-          <div class="field"><label>trial_log<span class="help" title="JSONL path for per-trial records.">?</span></label><input id="tuner_trial_log" type="text" value="trial_results.jsonl" /></div>
-          <div class="field"><label>pareto_report<span class="help" title="JSON path for final Pareto report.">?</span></label><input id="tuner_pareto_report" type="text" value="pareto_report.json" /></div>
-          <div class="field"><label>index_cache<span class="help" title="Path for index-cache metadata.">?</span></label><input id="tuner_index_cache" type="text" value="index_cache.json" /></div>
-          <div class="field"><label>optuna_storage<span class="help" title="Path for Optuna SQLite storage DB.">?</span></label><input id="tuner_optuna_storage" type="text" value="optuna_study.db" /></div>
+        <div class="grid-2">
+          <div class="field"><label>trial_log<span class="req">*</span><span class="help" title="JSONL path for per-trial records.">?</span></label><input id="tuner_trial_log" type="text" value="trial_results.jsonl" required /></div>
+          <div class="field"><label>pareto_report<span class="req">*</span><span class="help" title="JSON path for final Pareto report.">?</span></label><input id="tuner_pareto_report" type="text" value="pareto_report.json" required /></div>
         </div>
       </div>
 
@@ -563,8 +540,7 @@
           top_k: getInt("top_k"),
           nprobes: getInt("nprobes"),
           reranking: getBool("reranking"),
-          where_clause: getValue("query_where_clause"),
-          named_params_json: getValue("named_params_json"),
+          where_clause: JSON.parse(getValue("query_where_clause_json") || "{}"),
         },
         benchmark: {
           warmup_seconds: getInt("warmup_seconds"),
@@ -578,9 +554,6 @@
           load_batch_size: getInt("load_batch_size"),
           load_workers: getInt("load_workers"),
           doc_id_prefix: getValue("doc_id_prefix"),
-          static_fields_json: getValue("static_fields_json"),
-          scalar_field: getValue("loading_scalar_field") || "", // Map to your original logic
-          scalar_modulo: getInt("scalar_modulo"),
         },
         optuna: {
           objectives: getValue("objectives"),
@@ -669,10 +642,8 @@
 
       showStatus("success", "Constructing payload and sending to FastAPI...");
       const jsonErrors = [];
-      const namedParamsErr = validateJsonString("Named Params (JSON)", getValue("named_params_json"));
-      if (namedParamsErr) jsonErrors.push(namedParamsErr);
-      const staticFieldsErr = validateJsonString("Static Fields (JSON)", getValue("static_fields_json"));
-      if (staticFieldsErr) jsonErrors.push(staticFieldsErr);
+      const whereClauseErr = validateJsonString("Query Where Clause (JSON)", getValue("query_where_clause_json") || "{}");
+      if (whereClauseErr) jsonErrors.push(whereClauseErr);
       if (jsonErrors.length) {
         showStatus("error", jsonErrors.join("<br>"));
         return;
