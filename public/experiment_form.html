@@ -266,6 +266,11 @@
           <div class="field"><label>Query Vectors Path<span class="help" title="Query vectors .fvecs path.">?</span></label><input id="query_vectors_path" type="text" /></div>
           <div class="field"><label>Ground Truth Path<span class="help" title="Ground-truth .ivecs path.">?</span></label><input id="ground_truth_path" type="text" /></div>
         </div>
+        <div class="grid-3">
+          <div class="field"><label>Scalar Fields Path<span class="help" title="Path to JSON file describing scalar/metadata fields.">?</span></label><input id="scalar_fields_path" type="text" /></div>
+          <div class="field"><label>Query Filters Path<span class="help" title="Path to JSON file with query-time filters.">?</span></label><input id="query_filters_path" type="text" /></div>
+          <div class="field"><label></label><div style="height:1px"></div></div>
+        </div>
       </div>
 
       <div class="card">
@@ -362,10 +367,6 @@
         <div class="grid-4">
           <div class="field"><label>Doc ID Prefix<span class="req">*</span><span class="help" title="Prefix for generated document IDs.">?</span></label><input id="doc_id_prefix" type="text" value="vec" required /></div>
         </div>
-
-        <div class="grid-row" style="margin-top: 15px;">
-           <div class="field"><label>Query Where Clause (JSON)<span class="help" title="Query-time filter predicate JSON object.">?</span></label><textarea id="query_where_clause_json">{}</textarea></div>
-        </div>
       </div>
 
       <div class="card">
@@ -391,30 +392,30 @@
 
           <h4 style="font-size: 13px; color: var(--accent); margin: 20px 0 10px;">Search Space (Min/Max/Step)</h4>
           <div class="grid-4">
-            <div class="field"><label>N-List Min<span class="help" title="Minimum nlist for search space.">?</span></label><input id="nlist_min" type="number" /></div>
-            <div class="field"><label>N-List Max<span class="help" title="Maximum nlist for search space.">?</span></label><input id="nlist_max" type="number" /></div>
-            <div class="field"><label>N-List Step<span class="help" title="Step size for nlist.">?</span></label><input id="nlist_step" type="number" /></div>
+            <div class="field"><label>N-List Min<span class="help" title="Minimum nlist for search space.">?</span></label><input id="nlist_min" type="number" value="1000" /></div>
+            <div class="field"><label>N-List Max<span class="help" title="Maximum nlist for search space.">?</span></label><input id="nlist_max" type="number" value="1000000"/></div>
+            <div class="field"><label>N-List Step<span class="help" title="Step size for nlist.">?</span></label><input id="nlist_step" type="number" value="100"/></div>
             <div class="field">
               <label>Resume<span class="help" title="Resume existing Optuna study DB if present.">?</span></label>
               <select id="resume"><option value="false">false</option><option value="true">true</option></select>
             </div>
           </div>
           <div class="grid-4">
-            <div class="field"><label>Train Min<span class="help" title="Minimum train_list.">?</span></label><input id="train_list_min" type="number" /></div>
-            <div class="field"><label>Train Max<span class="help" title="Maximum train_list.">?</span></label><input id="train_list_max" type="number" /></div>
-            <div class="field"><label>Train Step<span class="help" title="Step size for train_list.">?</span></label><input id="train_list_step" type="number" /></div>
+            <div class="field"><label>Train Min<span class="help" title="Minimum train_list.">?</span></label><input id="train_list_min" type="number" value="10000" /></div>
+            <div class="field"><label>Train Max<span class="help" title="Maximum train_list.">?</span></label><input id="train_list_max" type="number" value="100000"/></div>
+            <div class="field"><label>Train Step<span class="help" title="Step size for train_list.">?</span></label><input id="train_list_step" type="number" value="100"/></div>
             <div class="field"><label>Quantization Choices<span class="help" title="Comma-separated quantization options.">?</span></label><input id="quantization_choices" type="text" placeholder="SQ8, SQ4" /></div>
           </div>
           <div class="grid-4">
-            <div class="field"><label>N-Probes Min<span class="help" title="Minimum nprobes.">?</span></label><input id="nprobes_min" type="number" /></div>
-            <div class="field"><label>N-Probes Max<span class="help" title="Maximum nprobes.">?</span></label><input id="nprobes_max" type="number" /></div>
-            <div class="field"><label>N-Probes Step<span class="help" title="Step size for nprobes.">?</span></label><input id="nprobes_step" type="number" /></div>
-            <div class="field"><label>persist_full_vector Choices<span class="help" title="Comma-separated boolean choices.">?</span></label><input id="persist_full_vector_choices" type="text" /></div>
+            <div class="field"><label>N-Probes Min<span class="help" title="Minimum nprobes.">?</span></label><input id="nprobes_min" type="number" value="5"/></div>
+            <div class="field"><label>N-Probes Max<span class="help" title="Maximum nprobes.">?</span></label><input id="nprobes_max" type="number" value="300"/></div>
+            <div class="field"><label>N-Probes Step<span class="help" title="Step size for nprobes.">?</span></label><input id="nprobes_step" type="number" value="5"/></div>
+            <div class="field"><label>persist_full_vector Choices<span class="help" title="Comma-separated boolean choices.">?</span></label><input id="persist_full_vector_choices" type="text" value="true, false"/></div>
           </div>
           <div class="grid-4">
-            <div class="field"><label>Top N Scan Min<span class="help" title="Minimum top_n_scan.">?</span></label><input id="top_n_scan_min" type="number" /></div>
-            <div class="field"><label>Top N Scan Max<span class="help" title="Maximum top_n_scan.">?</span></label><input id="top_n_scan_max" type="number" /></div>
-            <div class="field"><label>Top N Scan Step<span class="help" title="Step size for top_n_scan.">?</span></label><input id="top_n_scan_step" type="number" /></div>
+            <div class="field"><label>Top N Scan Min<span class="help" title="Minimum top_n_scan.">?</span></label><input id="top_n_scan_min" type="number" value="0"/></div>
+            <div class="field"><label>Top N Scan Max<span class="help" title="Maximum top_n_scan.">?</span></label><input id="top_n_scan_max" type="number" value="100"/></div>
+            <div class="field"><label>Top N Scan Step<span class="help" title="Step size for top_n_scan.">?</span></label><input id="top_n_scan_step" type="number" value="2"/></div>
           </div>
         </details>
       </div>
@@ -484,11 +485,7 @@
 
     function buildPayload() {
       const payload = {
-        config_template_path: getValue("config_template_path"),
-        go_binary: getValue("go_binary"),
-        python_executable: getValue("python_executable"),
         resume: getBool("resume"),
-        label: getValue("label"),
       };
 
       const nIndex = getInt("n_index_trials"); if (nIndex) payload.n_index_trials = nIndex;
@@ -508,6 +505,8 @@
           data_path: getValue("data_path"),
           query_vectors_path: getValue("query_vectors_path"),
           ground_truth_path: getValue("ground_truth_path"),
+          scalar_fields_path: getValue("scalar_fields_path"),
+          query_filters_path: getValue("query_filters_path"),
         },
         s3: {
           region: getValue("dataset_s3_region"),
@@ -540,7 +539,6 @@
           top_k: getInt("top_k"),
           nprobes: getInt("nprobes"),
           reranking: getBool("reranking"),
-          where_clause: JSON.parse(getValue("query_where_clause_json") || "{}"),
         },
         benchmark: {
           warmup_seconds: getInt("warmup_seconds"),
@@ -602,8 +600,6 @@
       const tunerOutput = {
         trial_log: getValue("tuner_trial_log"),
         pareto_report: getValue("tuner_pareto_report"),
-        index_cache: getValue("tuner_index_cache"),
-        optuna_storage: getValue("tuner_optuna_storage"),
       };
       if (hasAny(tunerOutput)) payload.config_overrides.tuner_output = tunerOutput;
 
@@ -642,12 +638,6 @@
 
       showStatus("success", "Constructing payload and sending to FastAPI...");
       const jsonErrors = [];
-      const whereClauseErr = validateJsonString("Query Where Clause (JSON)", getValue("query_where_clause_json") || "{}");
-      if (whereClauseErr) jsonErrors.push(whereClauseErr);
-      if (jsonErrors.length) {
-        showStatus("error", jsonErrors.join("<br>"));
-        return;
-      }
 
       const payload = buildPayload();
 
