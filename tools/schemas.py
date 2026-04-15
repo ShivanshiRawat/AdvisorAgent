@@ -2,9 +2,10 @@
 tools/schemas.py
 
 All tool schemas in OpenAI function-calling format.
-These are consumed by agent/gemini_loop.py which converts them to Gemini's
-native types.FunctionDeclaration format before passing to the model.
+These are consumed by the active LLM provider (agent/providers/) which
+converts them to the provider's native format before passing to the model.
 """
+from tools.performance_bins import thresholds_for_schema
 
 ALL_TOOL_SCHEMAS = [
     {
@@ -170,9 +171,19 @@ ALL_TOOL_SCHEMAS = [
             "parameters": {
                 "type": "object",
                 "properties": {
+                    "current_vector_count": {
+                        "type": "string",
+                        "description": (
+                            "CURRENT vector count today (e.g. '20000000' or '20M'). "
+                            "This is the primary routing factor — exclusions are based on this value only."
+                        ),
+                    },
                     "projected_vector_count": {
                         "type": "string",
-                        "description": "3-year projected vector count (e.g. '50000000' or '50M').",
+                        "description": (
+                            "Optional. 3-year projected vector count (e.g. '120000000' or '120M'). "
+                            "Used only to add a forward-looking NOTE — never changes the primary index choice."
+                        ),
                     },
                     "filter_selectivity_pct": {
                         "type": "string",
@@ -186,7 +197,7 @@ ALL_TOOL_SCHEMAS = [
                         "description": "'true' or 'false'. Does the user need fuzzy matching or BM25 keyword search?",
                     },
                 },
-                "required": ["projected_vector_count", "filter_selectivity_pct", "requires_keyword_search"],
+                "required": ["current_vector_count", "filter_selectivity_pct", "requires_keyword_search"],
             },
         },
     },
@@ -230,17 +241,16 @@ ALL_TOOL_SCHEMAS = [
     {
         "type": "function",
         "function": {
-            "name": "get_index_queries",
+            "name": "get_default_parameters",
             "description": (
-                "Returns the DDL (CREATE INDEX) and DML (SELECT) query templates for a single "
-                "Couchbase vector index component. "
-                "Call this after giving a recommendation so the user has concrete SQL++ to adapt. "
-                "For Hybrid architectures (HVI+FTS or CVI+FTS), call this tool TWICE — once per "
-                "component — then instruct the user to run both queries independently and merge the "
-                "results at the application layer using a fusion strategy (e.g. Reciprocal Rank Fusion). "
-                "After presenting the templates, offer to substitute the user's actual bucket, "
-                "scope, collection, field names, dimensions, and similarity metric. "
-                "If the user cannot share their data model, present the general templates as-is."
+                "Call this ONLY when the user explicitly asks for DEFAULT parameter values — "
+                "using words like 'default', 'standard', or 'out-of-the-box settings'. "
+                "Do NOT call this when the user asks for a starting configuration, starting point, "
+                "or recommended settings — use find_baseline_configuration for those instead. "
+                "Returns calculated optimal values for parameters like nlist and train_list "
+                "based on the vector count. "
+                "For Hybrid architectures (HVI+FTS or CVI+FTS), call this tool TWICE — once with "
+                "'HVI' (or 'CVI') for the vector component, and once with 'FTS' for the search component."
             ),
             "parameters": {
                 "type": "object",
@@ -248,18 +258,14 @@ ALL_TOOL_SCHEMAS = [
                     "index_type": {
                         "type": "string",
                         "enum": ["HVI", "CVI", "FTS"],
-                        "description": (
-                            "The index component to fetch query templates for. "
-                            "HVI = Hyperscale Vector Index (disk-centric, billion-scale ANN). "
-                            "CVI = Composite Vector Index (GSI filter-first, <20% selective workloads). "
-                            "FTS = Search Vector Index (keyword + vector, <100M scale). "
-                            "For Hybrid architectures, call this tool once with 'HVI' (or 'CVI') "
-                            "and once with 'FTS', then present both sets of queries and explain "
-                            "that the results must be merged at the application layer."
-                        ),
+                        "description": "The recommended index type.",
+                    },
+                    "vector_count": {
+                        "type": "integer",
+                        "description": "The total number of vectors in the dataset (e.g. 50000000).",
                     },
                 },
-                "required": ["index_type"],
+                "required": ["index_type", "vector_count"],
             },
         },
     },
@@ -320,7 +326,11 @@ ALL_TOOL_SCHEMAS = [
             "name": "give_recommendation",
             "description": (
                 "TERMINAL TOOL. Deliver the final index recommendation. "
-                "Only call after evaluate_index_viability has returned a verdict."
+                "Only call after evaluate_index_viability has returned a verdict. "
+                "NEVER call this tool to present benchmark baseline results, configuration parameters, "
+                "or the output of find_baseline_configuration — those must always be presented as plain text. "
+                "NEVER call this tool a second time in the same conversation just because the user asked "
+                "for a baseline config or starting parameters after an earlier recommendation was already given."
             ),
             "parameters": {
                 "type": "object",
@@ -335,14 +345,32 @@ ALL_TOOL_SCHEMAS = [
                                 "recommended_index": {"type": "string"},
                                 "reasoning": {
                                     "type": "string",
-                                    "description": "Physical reasoning: scale, filter mechanics, RAM constraints.",
+                                    "description": (
+                                        "Physical reasoning grounded in CURRENT scale, filter mechanics, "
+                                        "and RAM constraints. "
+                                        "NEVER include projected or future scale here — future scale "
+                                        "belongs only in caveats."
+                                    ),
                                 },
                                 "eliminated_alternatives": {
                                     "type": "object",
                                     "additionalProperties": {
                                         "type": "string",
-                                        "description": "Why this index was eliminated.",
+                                        "description": (
+                                            "Why this specific index was not chosen. "
+                                            "Base the reason ONLY on current-scale signals (today's scale, "
+                                            "filter selectivity, keyword search need, infrastructure). "
+                                            "Do NOT mention projected/future scale here — that belongs in caveats. "
+                                            "Each entry should explain both why it was eliminated for this user "
+                                            "AND briefly note what situation would make it the right pick."
+                                        ),
                                     },
+                                    "description": (
+                                        "MUST include an entry for EVERY index type that was not recommended. "
+                                        "Always cover all four: HVI, CVI, FTS (Search Vector Index), Hybrid. "
+                                        "Never omit an index type — even if its elimination is obvious. "
+                                        "Reasons must be grounded in current signals, not projected scale."
+                                    ),
                                 },
                                 "caveats": {
                                     "type": "array",
@@ -367,19 +395,129 @@ ALL_TOOL_SCHEMAS = [
                                 "items": {"type": "string"},
                             },
                             "shared_indexes": {"type": "string"},
-                            "operational_notes": {"type": "string"},
+                            "operational_notes": {
+                                "type": "string",
+                                "description": (
+                                    "Describe how the recommended index operates TODAY. "
+                                    "Do NOT include projected scale or future growth here. "
+                                    "Future migration notes belong in caveats."
+                                ),
+                            },
                         },
+                    },
+                    "performance_tuning": {
+                        "type": "object",
+                        "description": (
+                            "REQUIRED — include in every recommendation. "
+                            "Infer the 1-2 most important performance metrics from the user's domain "
+                            "(e.g. medical/legal → Recall; real-time UI / recommendation → Latency; high-traffic API use case → QPS). "
+                            "Name them explicitly and give concrete tuning knobs. Never omit this field."
+                        ),
+                        "properties": {
+                            "domain_inference": {
+                                "type": "string",
+                                "description": (
+                                    "1-2 sentences on what the use case implies about performance priorities "
+                                    "and why. E.g. 'This is a medical retrieval system — missing a relevant "
+                                    "result has patient-safety implications, so Recall is the top priority.'"
+                                ),
+                            },
+                            "priorities": {
+                                "type": "array",
+                                "description": "1-2 entries for the most important metrics, ordered by priority.",
+                                "items": {
+                                    "type": "object",
+                                    "properties": {
+                                        "metric": {"type": "string", "enum": ["Recall", "Latency", "QPS"]},
+                                        "priority_level": {"type": "string", "enum": ["High", "Medium"]},
+                                        "why": {
+                                            "type": "string",
+                                            "description": "One sentence on why this metric matters for this specific case.",
+                                        },
+                                        "knobs": {
+                                            "type": "array",
+                                            "description": "2-3 concrete tuning suggestions.",
+                                            "items": {
+                                                "type": "object",
+                                                "properties": {
+                                                    "parameter": {"type": "string"},
+                                                    "action": {"type": "string"},
+                                                    "scope": {"type": "string", "enum": ["index-time", "query-time"]},
+                                                    "trade_off": {"type": "string"},
+                                                },
+                                                "required": ["parameter", "action", "scope", "trade_off"],
+                                            },
+                                        },
+                                    },
+                                    "required": ["metric", "priority_level", "why", "knobs"],
+                                },
+                            },
+                        },
+                        "required": ["domain_inference", "priorities"],
+                    },
+                    "retrieval_pipeline": {
+                        "type": "object",
+                        "description": (
+                            "Include ONLY when the user's application has an external LLM or model-based "
+                            "reranking step after Couchbase retrieval (e.g. RAG pipeline, cross-encoder, "
+                            "LLM scoring pass). When present, this section is as important as the index "
+                            "choice itself. Omit this field entirely if no external reranker is present. "
+                            "MUST: If `update_state` records `has_external_reranker=true`, the agent MUST populate this field in the `give_recommendation` output — do not omit it."
+                        ),
+                        "properties": {
+                            "pipeline_summary": {
+                                "type": "string",
+                                "description": (
+                                    "1-2 sentences describing the two-stage flow: what Couchbase retrieves "
+                                    "and what the external LLM/reranker does with those candidates."
+                                ),
+                            },
+                            "optimizations": {
+                                "type": "array",
+                                "description": "2-4 concrete pipeline-level tuning recommendations.",
+                                "items": {
+                                    "type": "object",
+                                    "properties": {
+                                        "concern": {
+                                            "type": "string",
+                                            "description": (
+                                                "The aspect being optimized. E.g. 'Candidate Pool Size (top_k)', "
+                                                "'Payload / Token Count', 'First-Stage Recall (nProbes)', "
+                                                "'Rerank Set Limit'."
+                                            ),
+                                        },
+                                        "recommendation": {
+                                            "type": "string",
+                                            "description": "Concrete, actionable suggestion.",
+                                        },
+                                        "trade_off": {
+                                            "type": "string",
+                                            "description": "The cost or risk of applying this optimization.",
+                                        },
+                                    },
+                                    "required": ["concern", "recommendation", "trade_off"],
+                                },
+                            },
+                        },
+                        "required": ["pipeline_summary", "optimizations"],
                     },
                     "next_steps": {
                         "type": "array",
                         "items": {"type": "string"},
                         "description": (
-                            "Short list of concrete things you can help the user with next. "
-                            "Always include at least: generating the CREATE INDEX and SELECT queries "
-                            "for the recommended index, and answering follow-up questions about the "
-                            "recommendation. Add other relevant options based on context "
-                            "(e.g. tuning parameters, migration path, explaining eliminated alternatives). "
-                            "Keep each item to one short sentence — this is displayed as a menu."
+                            "3 to 5 concrete, specific follow-up actions tailored to THIS conversation. "
+                            "Do NOT use a fixed set of suggestions. Instead, reason about:\n"
+                            "1. What was the user's original question and what might they naturally ask next?\n"
+                            "2. What gaps, caveats, or trade-offs surfaced during this conversation that deserve deeper explanation?\n"
+                            "3. What was eliminated and might the user want to understand why?\n"
+                            "4. What operational or tuning step is the logical next move after receiving this recommendation?\n"
+                            "5. What did the user seem uncertain about that you could proactively clarify?\n\n"
+                            "Each item must be a short, specific sentence written from the agent's perspective. "
+                            "Never repeat the same suggestions across different conversations. "
+                            "Never use generic phrases like 'Answer follow-up questions' or 'Explain parameters'. "
+                            "Ground every suggestion in something concrete from THIS conversation — "
+                            "reference the user's scale, their index, their filter, their domain, or their stated concern. "
+                            "Keep each item to one short sentence — this is displayed as a clickable menu."
                         ),
                     },
                 },
@@ -387,4 +525,176 @@ ALL_TOOL_SCHEMAS = [
             },
         },
     },
+    {
+        "type": "function",
+        "function": {
+            "name": "give_performance_profile",
+            "description": (
+                "TERMINAL TOOL. Call this ONLY when the user has explicitly asked for a performance "
+                "requirements analysis (e.g. 'help me understand my performance needs', "
+                "'what recall/QPS/latency should I target?'). "
+                "Do NOT call this when collecting performance signals as part of the Benchmark Baseline "
+                "Protocol — in that case, pass the values directly to find_baseline_configuration instead. "
+                "Call this once you have gathered enough signal to rank Recall, QPS, and Latency "
+                "and estimate target ranges for each. "
+                "Do NOT call this until you have asked the user the relevant questions via ask_user "
+                "and have either confirmed values or made a reasoned inference. "
+                f"Bin thresholds: {thresholds_for_schema()}"
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "domain_inference": {
+                        "type": "string",
+                        "description": (
+                            "A 1-2 sentence summary of what you inferred about the user's domain "
+                            "and why it drives the priority ordering you chose. "
+                            "E.g. 'Fraud detection systems are high-stakes — missing a fraudulent "
+                            "transaction is far worse than a slow result, so Recall takes priority.'"
+                        ),
+                    },
+                    "metrics": {
+                        "type": "array",
+                        "description": (
+                            "Exactly 3 entries — one each for Recall, QPS, and Latency — ordered by priority "
+                            f"(primary first). Bin thresholds: {thresholds_for_schema()}"
+                        ),
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "metric": {
+                                    "type": "string",
+                                    "enum": ["Recall", "QPS", "Latency"],
+                                },
+                                "priority": {
+                                    "type": "string",
+                                    "enum": ["primary", "secondary", "tertiary"],
+                                },
+                                "bin": {
+                                    "type": "string",
+                                    "enum": ["Low", "Moderate", "High"],
+                                    "description": (
+                                        f"The categorized bin for this metric. Thresholds: {thresholds_for_schema()}"
+                                    ),
+                                },
+                                "target_range": {
+                                    "type": "string",
+                                    "description": (
+                                        "Human-readable target range for this metric. "
+                                        "Use user-provided numbers where available, otherwise a reasoned estimate. "
+                                        "Examples: '≥ 95%', '500–700 req/s', '< 100 ms p95'. "
+                                        "If truly unknown, say 'to be determined — start with X and tune from there'."
+                                    ),
+                                },
+                                "rationale": {
+                                    "type": "string",
+                                    "description": "One sentence explaining why this priority, bin, and range was chosen for this metric.",
+                                },
+                            },
+                            "required": ["metric", "priority", "bin", "target_range", "rationale"],
+                        },
+                    },
+                    "trade_off_note": {
+                        "type": "string",
+                        "description": (
+                            "The key tension between the top two metrics for this use case. "
+                            "E.g. 'Higher recall (via reranking or larger nProbe) increases latency — "
+                            "tune nProbe incrementally and measure p95 at each step.'"
+                        ),
+                    },
+                },
+                "required": ["domain_inference", "metrics", "trade_off_note"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "find_baseline_configuration",
+            "description": (
+                "Queries the internal Couchbase benchmark dataset to find the most similar "
+                "benchmark configuration to the user's use case. "
+                "Call this when the user asks for a starting configuration, baseline parameters, "
+                "or wants to know what real benchmark results look like for their scale and requirements. "
+                "You MUST have collected solution type, dataset scale, vector dimensions, and "
+                "performance targets (recall, QPS, latency) before calling this tool. "
+                "The tool bins the raw values internally and returns the closest benchmark row. "
+                "Present the result as: 'A benchmark run at <scale> with <config> achieved "
+                "<recall/QPS/latency>. Your target scale is different — use this as a starting "
+                "point for tuning.' Always include the scale_note from the result. "
+                f"Bin thresholds used internally: {thresholds_for_schema()}"
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "solution": {
+                        "type": "string",
+                        "enum": ["BHIVE", "GSI COMPOSITE"],
+                        "description": "The index/solution type. Must match exactly what is stored in the benchmark dataset.",
+                    },
+                    "target_scale": {
+                        "type": "integer",
+                        "description": (
+                            "The user's CURRENT dataset size in number of vectors/documents — today's scale, "
+                            "NOT the 3-year projected scale. Use the projected scale only for evaluate_index_viability. "
+                            "E.g. if the user has 100M today and expects 500M in 3 years, pass 100000000 here."
+                        ),
+                    },
+                    "target_dimension": {
+                        "type": "integer",
+                        "description": "Vector dimensionality. E.g. 1536 for OpenAI text-embedding-3-large.",
+                    },
+                    "target_recall": {
+                        "type": "number",
+                        "description": "User's target recall as a decimal between 0 and 1. E.g. 0.95.",
+                    },
+                    "target_qps": {
+                        "type": "number",
+                        "description": "User's target queries per second. E.g. 1200.",
+                    },
+                    "target_latency": {
+                        "type": "number",
+                        "description": "User's target P95 latency in milliseconds. E.g. 40.",
+                    },
+                },
+                "required": [
+                    "solution",
+                    "target_scale",
+                    "target_dimension",
+                    "target_recall",
+                    "target_qps",
+                    "target_latency",
+                ],
+            },
+        },
+    },
+    # ── Query template tool ──────────────────────────────────────────
+    {
+        "type": "function",
+        "function": {
+            "name": "get_index_queries",
+            "description": (
+                "Returns CREATE INDEX (DDL) and SELECT (DML) query templates for the "
+                "given index type. Templates contain <placeholder> notation for ALL values. "
+                "The response includes two lists: 'user_must_fill' (bucket, scope, collection, "
+                "field names — only the user knows these) and 'tool_can_fill' (dimension, "
+                "similarity, nlist, etc. — values the LLM can substitute from earlier baseline "
+                "or default parameter results). "
+                "Call this when the user asks for CREATE INDEX statements, query syntax, "
+                "DDL, or query templates."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "index_type": {
+                        "type": "string",
+                        "description": "The index type to get templates for.",
+                        "enum": ["HVI", "CVI", "FTS"],
+                    },
+                },
+                "required": ["index_type"],
+            },
+        },
+    },
 ]
+

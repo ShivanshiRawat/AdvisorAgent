@@ -20,18 +20,27 @@ def plan(steps: list) -> str:
 
 def update_state(session_state: dict, updates: dict) -> str:
     """Merge new facts into the agent's persistent session state."""
-    for key in ["confirmed_facts", "resolved_gaps"]:
-        if key in updates:
-            if isinstance(session_state.get(key), dict):
-                session_state[key].update(updates[key])
-            elif isinstance(session_state.get(key), list):
-                existing = session_state.get(key, [])
-                for item in updates[key]:
-                    if item not in existing:
-                        existing.append(item)
-                session_state[key] = existing
-            else:
-                session_state[key] = updates[key]
+    if "confirmed_facts" in updates:
+        if isinstance(session_state.get("confirmed_facts"), dict):
+            session_state["confirmed_facts"].update(updates["confirmed_facts"])
+        else:
+            session_state["confirmed_facts"] = updates["confirmed_facts"]
+
+    if "resolved_gaps" in updates:
+        incoming = updates["resolved_gaps"]
+        existing = session_state.get("resolved_gaps", [])
+        if not isinstance(existing, list):
+            existing = []
+        if isinstance(incoming, dict):
+            for k, v in incoming.items():
+                entry = f"{k}: {v}"
+                if entry not in existing:
+                    existing.append(entry)
+        elif isinstance(incoming, list):
+            for item in incoming:
+                if item not in existing:
+                    existing.append(item)
+        session_state["resolved_gaps"] = existing
 
     for key in ["query_patterns", "open_gaps"]:
         if key in updates:

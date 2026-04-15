@@ -27,15 +27,19 @@ from storage import save_turn
 # ---------------------------------------------------------------------------
 
 TOOL_META = {
-    "think":                    ("Agent Thinking",               "reasoning"),
-    "plan":                     ("Execution Plan",               "planning"),
-    "update_state":             ("Updating Understanding",       "memory"),
-    "use_case_search":          ("Use Case Library Search",      "search"),
-    "evaluate_index_viability": ("Viability Check",              "compute"),
-    "compare_indexes":          ("Comparing Index Options",      "analysis"),
-    "web_search":               ("Web Search",                   "search"),
-    "ask_user":                 ("Asking Clarifying Question",   "terminal"),
-    "give_recommendation":      ("Delivering Recommendation",    "terminal"),
+    "think":                        ("Agent Thinking",               "reasoning"),
+    "plan":                         ("Execution Plan",               "planning"),
+    "update_state":                 ("Updating Understanding",       "memory"),
+    "use_case_search":              ("Use Case Library Search",      "search"),
+    "evaluate_index_viability":     ("Viability Check",              "compute"),
+    "compare_indexes":              ("Comparing Index Options",      "analysis"),
+    "get_default_parameters":       ("Calculating Parameters",       "compute"),
+    "find_baseline_configuration":  ("Finding Benchmark Baseline",   "compute"),
+    "get_index_queries":            ("Generating Query Templates",   "compute"),
+    "web_search":                   ("Web Search",                   "search"),
+    "ask_user":                     ("Asking Clarifying Question",   "terminal"),
+    "give_recommendation":          ("Delivering Recommendation",    "terminal"),
+    "give_performance_profile":     ("Delivering Perf Profile",      "terminal"),
 }
 
 
@@ -52,7 +56,7 @@ async def on_chat_start():
 
     await cl.Message(
         content=(
-            "### **Welcome to the Couchbase Vector Advisor**\n\n"
+            "### **Welcome to the Couchbase Vector Index Advisor**\n\n"
             "I am here to help you find the most efficient and cost-effective way to build search into your application. "
             "Whether you are just starting out, preparing for massive growth, or simply have questions about Couchbase "
             "vector indexes, I can guide you to the right setup for your needs.\n\n"
@@ -64,7 +68,10 @@ async def on_chat_start():
             "* **Recommend the best index** for your specific scenario.\n"
             "* **Identify the simplest path** based on your current setup.\n"
             "* **Provide expert answers** to any questions regarding index architecture.\n\n"
-            "Please share your use case or ask a question to begin!"
+            "* **Suggest performance tuning** tips to optimize your chosen index.\n\n"
+            "* **Give a baseline performance profile** to help you set expectations and measure improvements.\n\n"
+            "> ⚠️ Privacy note: Do NOT paste or share personal, sensitive, or confidential data (PII, secrets, passwords, or proprietary documents). Replace such content with placeholders before sharing.\n\n"
+            "Please share your use case or ask a specific question to begin!"
         )
     ).send()
 
@@ -94,12 +101,15 @@ async def _handle(user_text: str):
 
     session = cl.user_session.get("session") or {}
 
-    async with cl.Step(name=" Analysis ...", type="undefined", show_input=False) as thinking_step:
+    # Show a plain chat-bubble loading indicator — no step/tool chrome
+    loading_msg = cl.Message(content="Analysing...")
+    await loading_msg.send()
 
-        thinking_step.output = "Reasoning through your use case — this may take a few seconds."
-        # Run the blocking agent call in a background thread to keep the UI responsive
-        response = await asyncio.to_thread(run_turn, user_text, session)
+    # Run the blocking agent call in a background thread to keep the UI responsive
+    response = await asyncio.to_thread(run_turn, user_text, session)
 
+    # Fire the removal in the background — don't block rendering on a server round-trip
+    asyncio.ensure_future(loading_msg.remove())
 
     cl.user_session.set("session", session)
 
@@ -128,6 +138,8 @@ async def _handle(user_text: str):
 
     if resp_type == "recommendation":
         await _show_recommendation(payload)
+    elif resp_type == "performance_profile":
+        await _show_performance_profile(payload)
     elif resp_type == "clarification":
         await _ask_questions(payload, session)
     elif resp_type == "text":
@@ -145,6 +157,7 @@ async def _handle(user_text: str):
 async def _render_trace(steps: List[Dict[str, Any]]):
     """Render each tool call as a collapsible step in the UI."""
     seen = set()
+    seen_calls = set()  # deduplicate by (tool, args) identity
 
     for step_data in steps:
         tool = step_data.get("tool", "")
@@ -153,12 +166,16 @@ async def _render_trace(steps: List[Dict[str, Any]]):
         result = (step_data.get("result") or "").strip()
 
         # Terminal tools render their own output below — skip them here
-        if tool in ("ask_user", "give_recommendation"):
+        if tool in ("ask_user", "give_recommendation", "give_performance_profile"):
             continue
 
-        label, _ = TOOL_META.get(tool, (f"🔧 {tool}", "tool"))
+        # Skip duplicate calls of the same tool with the same arguments
+        call_key = (tool, json.dumps(args, sort_keys=True, default=str))
+        if call_key in seen_calls:
+            continue
+        seen_calls.add(call_key)
 
-        # Deduplicate identical thoughts
+        label, _ = TOOL_META.get(tool, (f"{tool}", "tool"))
         if thought and thought in seen:
             thought = ""
         elif thought:
@@ -226,8 +243,45 @@ async def _render_trace(steps: List[Dict[str, Any]]):
             if result:
                 try:
                     parsed = json.loads(result)
-                    pretty = json.dumps(parsed, indent=2)
-                    parts.append(f"**Result:**\n```json\n{pretty}\n```")
+
+                    # find_baseline_configuration — show benchmark identity + perf in the trace step.
+                    # The LLM's text response will present the full parameter breakdown.
+                    if tool == "find_baseline_configuration" and parsed.get("status") == "success":
+                        bm = parsed.get("closest_benchmark", {})
+
+                        card = ["### 📊 Closest Benchmark Match"]
+                        bs = bm.get("benchmark_scale")
+                        bs_str = f"{bs:,}" if isinstance(bs, int) else str(bs or "—")
+                        card.append(f"| | |")
+                        card.append(f"|---|---|")
+                        card.append(f"| **Solution** | {bm.get('solution', '—')} |")
+                        card.append(f"| **Benchmark Scale** | {bs_str} vectors |")
+                        card.append(f"| **Dimensions** | {bm.get('dimensions', '—')} |")
+                        card.append(f"")
+                        card.append(f"**Measured Performance:**")
+                        card.append(f"| Metric | Value | Bin |")
+                        card.append(f"|---|---|---|")
+                        card.append(f"| Recall | `{bm.get('recall', '—')}` | `{bm.get('recall_bin', '—')}` |")
+                        card.append(f"| QPS | `{bm.get('qps', '—')}` | `{bm.get('qps_bin', '—')}` |")
+                        card.append(f"| P95 Latency | `{bm.get('p95_latency_ms', '—')} ms` | `{bm.get('latency_bin', '—')}` |")
+
+                        scale_note = parsed.get("scale_note", "")
+                        if scale_note:
+                            card.append(f"")
+                            card.append(f"> ⚠️ {scale_note}")
+
+                        parts.append("\n".join(card))
+
+                    elif tool == "find_baseline_configuration" and parsed.get("status") == "no_match":
+                        parts.append(f"🔍 {parsed.get('message', 'No benchmark data found.')}")
+
+                    elif tool == "find_baseline_configuration" and parsed.get("status") == "error":
+                        parts.append(f"⚠️ Benchmark query error: {parsed.get('message', '')}")
+
+                    else:
+                        pretty = json.dumps(parsed, indent=2)
+                        parts.append(f"**Result:**\n```json\n{pretty}\n```")
+
                 except Exception:
                     parts.append(f"**Result:**\n{result}")
 
@@ -373,10 +427,76 @@ async def _show_recommendation(payload: Dict[str, Any]):
         if arch.get("operational_notes"):
             parts.append(f"- **Operational notes:** {arch['operational_notes']}")
 
+    pt = payload.get("performance_tuning", {})
+    if pt:
+        parts.append("\n---\n### Performance Tuning Guidance")
+        if pt.get("domain_inference"):
+            parts.append(f"> {pt['domain_inference']}\n")
+        for priority in pt.get("priorities", []):
+            metric = priority.get("metric", "")
+            level = priority.get("priority_level", "")
+            why = priority.get("why", "")
+            badge = "🔴" if level == "High" else "🟡"
+            parts.append(f"**{badge} {metric}** — {level} Priority")
+            if why:
+                parts.append(f"_{why}_\n")
+            knobs = priority.get("knobs", [])
+            if knobs:
+                for k in knobs:
+                    param     = k.get("parameter", "")
+                    action    = k.get("action", "")
+                    scope     = k.get("scope", "")
+                    trade_off = k.get("trade_off", "")
+                    parts.append(f"- Consider **{action} `{param}`** _{scope}_ → {trade_off}")
+            parts.append("")
+
+    rp = payload.get("retrieval_pipeline", {})
+    if rp:
+        parts.append("\n---\n### 🔄 Retrieval Pipeline Guidance")
+        if rp.get("pipeline_summary"):
+            parts.append(f"> {rp['pipeline_summary']}\n")
+        for opt in rp.get("optimizations", []):
+            concern      = opt.get("concern", "")
+            rec          = opt.get("recommendation", "")
+            trade_off    = opt.get("trade_off", "")
+            parts.append(f"**{concern}**")
+            parts.append(rec)
+            if trade_off:
+                parts.append(f"_Trade-off: {trade_off}_\n")
+
     next_steps = payload.get("next_steps", [])
     if next_steps:
-        parts.append("\n---\n### 💡 What I can help with next")
-        for i, step in enumerate(next_steps, 1):
-            parts.append(f"{i}. {step}")
+        parts.append("\n---\nWould you like me to:")
+        for step in next_steps:
+            parts.append(f"- {step}")
+
+    await cl.Message(content="\n".join(parts)).send()
+
+
+async def _show_performance_profile(payload: Dict[str, Any]):
+    """Render the performance requirements profile as a formatted card."""
+    _PRIORITY_BADGE = {"primary": "🥇 Primary", "secondary": "🥈 Secondary", "tertiary": "🥉 Tertiary"}
+
+    parts = ["## Performance Requirements Profile\n"]
+
+    domain_note = payload.get("domain_inference", "")
+    if domain_note:
+        parts.append(f"> {domain_note}\n")
+
+    metrics = payload.get("metrics", [])
+    if metrics:
+        parts.append("| Priority | Metric | Bin | Target | Rationale |")
+        parts.append("|---|---|---|---|---|")
+        for m in metrics:
+            badge   = _PRIORITY_BADGE.get(m.get("priority", ""), m.get("priority", ""))
+            metric  = m.get("metric", "")
+            bin_val = m.get("bin", "Unknown")
+            target  = m.get("target_range", "TBD")
+            reason  = m.get("rationale", "")
+            parts.append(f"| {badge} | **{metric}** | `{bin_val}` | `{target}` | {reason} |")
+
+    trade_off = payload.get("trade_off_note", "")
+    if trade_off:
+        parts.append(f"\n---\n> ⚖️ **Key trade-off:** {trade_off}")
 
     await cl.Message(content="\n".join(parts)).send()
