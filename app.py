@@ -71,6 +71,7 @@ async def on_chat_start():
             "* **Suggest performance tuning** tips to optimize your chosen index.\n\n"
             "* **Give a baseline performance profile** to help you set expectations and measure improvements.\n\n"
             "> ⚠️ Privacy note: Do NOT paste or share personal, sensitive, or confidential data (PII, secrets, passwords, or proprietary documents). Replace such content with placeholders before sharing.\n\n"
+            "> 💬 Feedback: Share your feedback in our Slack channel: [couchbase-vector-index-advisor](https://couchbase.slack.com/archives/C0ATNRK9NAY).\n\n"
             "Please share your use case or ask a specific question to begin!"
         )
     ).send()
